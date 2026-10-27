@@ -778,6 +778,7 @@ To re-render the README screenshots, run the demo in screenshot mode. It opens t
 ./gradlew :juxtray:test                # unit tests
 ./gradlew :juxtray:javadoc             # public API docs
 ./gradlew :demo:run                    # run the demo
+./gradlew :visualtest:run              # end-to-end visual test (takes over mouse and keyboard)
 ./gradlew :juxtray:jar                 # build the library jar
 ```
 
@@ -790,10 +791,13 @@ juxtray/                 the library (module xss.it.juxtray)
   src/main/resources/.../fx/           built-in menu and notification themes
   src/test/java/                       unit tests
 demo/                    the demo app (module xss.it.juxtray.demo)
+visualtest/              end-to-end visual test (module xss.it.juxtray.visualtest)
 docs/screenshots/        README images (rendered by the demo)
 ```
 
 Unit tests cover the pure-Java parts: the icon resampler, the menu and notification placement rules for all taskbar positions and multi-monitor coordinates, and the Win32 struct layouts.
+
+The visual test covers the rest on a real Windows desktop. It creates a tray icon and drives it with real mouse and keyboard input (JavaFX `Robot`): hover and tooltip, clicks, menu placement, submenus, every way of closing the menu, keyboard navigation, all menu themes, the style source, every kind of notification and interaction, two tray icons sharing a corner, and closing. It prints a PASS/FAIL line per check, fails the task if any check fails, and saves screenshots to `visualtest/build/screenshots` for you to review. If Windows keeps the icon in the hidden-icons area, the test opens that flyout first, like a user would. **Don't touch the mouse or keyboard for the two minutes it runs.**
 
 ---
 

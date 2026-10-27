@@ -1,8 +1,10 @@
 /*
- * Root settings: declares the two modules of the build.
+ * Root settings: declares the modules of the build.
  *
- *   juxtray : the tray icon library itself (published artifact).
- *   demo    : a JavaFX sample application that consumes the library.
+ *   juxtray    : the tray icon library itself (published artifact).
+ *   demo       : a JavaFX sample application that consumes the library.
+ *   visualtest : end-to-end visual test on a real desktop (run on purpose:
+ *                it takes over the mouse and keyboard).
  */
 pluginManagement {
     repositories {
@@ -21,3 +23,4 @@ rootProject.name = 'juxtray-build'
 
 include 'juxtray'
 include 'demo'
+include 'visualtest'

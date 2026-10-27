@@ -1,0 +1,37 @@
+/*
+ * visualtest: end-to-end visual test of the library on a real desktop.
+ *
+ * It drives the actual tray icon with real mouse and keyboard input (JavaFX
+ * Robot), checks the outcome, and saves screenshots for a human to review.
+ * It takes over the mouse and keyboard for about two minutes, so it is not
+ * part of 'build' or 'test'; run it on purpose:
+ *
+ *   gradlew :visualtest:run
+ *
+ * Screenshots go to visualtest/build/screenshots. The task fails if any check
+ * fails.
+ */
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':juxtray')
+}
+
+// Internal packages the test reads by reflection (icon bounds, host stages). Opened to the
+// test module only, at run time; the library still exports nothing but its public API.
+def openedPackages = ['xss.it.juxtray', 'com.xss.it.juxtray', 'com.xss.it.juxtray.win', 'com.xss.it.juxtray.fx']
+
+application {
+    mainModule = 'xss.it.juxtray.visualtest'
+    mainClass = 'xss.it.juxtray.visualtest.VisualTest'
+    applicationDefaultJvmArgs = ['--enable-native-access=xss.it.juxtray,javafx.graphics,javafx.media'] +
+            openedPackages.collect { "--add-opens=xss.it.juxtray/${it}=xss.it.juxtray.visualtest".toString() }
+}
+
+tasks.named('run', JavaExec) {
+    // Output folder, and the demo's Neon theme (a real third-party-style stylesheet to apply).
+    args = [layout.buildDirectory.dir('screenshots').get().asFile.absolutePath,
+            rootProject.file('demo/src/main/resources/xss/it/juxtray/demo/neon-menu.css').absolutePath]
+}
