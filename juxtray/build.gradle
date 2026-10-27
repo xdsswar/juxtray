@@ -1,0 +1,46 @@
+/*
+ * juxtray: the tray icon library.
+ *
+ * Public API lives in 'xss.it.juxtray' (exported).
+ * Internals live in 'com.xss.it.juxtray' (never exported).
+ * Native platform access is done through the Foreign Function & Memory API,
+ * so consumers must grant '--enable-native-access=xss.it.juxtray'.
+ */
+plugins {
+    id 'java-library'
+}
+
+def fx = property('javafxVersion')
+// Named 'fxPlatform' so it does not shadow Gradle's platform(...) BOM function.
+def fxPlatform = rootProject.ext.javafxPlatform
+
+dependencies {
+    // JavaFX is part of our public API (menus are JavaFX nodes), hence 'api'.
+    api "org.openjfx:javafx-base:${fx}:${fxPlatform}"
+    api "org.openjfx:javafx-graphics:${fx}:${fxPlatform}"
+    api "org.openjfx:javafx-controls:${fx}:${fxPlatform}"
+
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    // Gradle 9 no longer bundles the JUnit Platform launcher.
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.named('javadoc', Javadoc) {
+    // Publish docs for the public API only. Internal sources (com.xss.it.*) are left out,
+    // and javadoc resolves references to them from the compiled classes patched into the module.
+    def classesDir = sourceSets.main.output.classesDirs.singleFile
+    exclude 'com/xss/it/**'
+    options.addStringOption('-patch-module', "xss.it.juxtray=${classesDir}")
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    // Tests run on the class path; allow native access so FFM types load without warnings.
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}

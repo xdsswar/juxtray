@@ -1,0 +1,39 @@
+/*
+ * Root build: configuration shared by every Java module.
+ *
+ * JavaFX is wired by hand (no openjfx plugin) so the build stays compatible
+ * with Gradle 9+. The platform classifier is resolved once here and exposed
+ * to sub-projects through the 'javafxPlatform' extra property.
+ */
+
+def os = System.getProperty('os.name').toLowerCase()
+def arch = System.getProperty('os.arch').toLowerCase()
+def aarch64 = arch == 'aarch64' || arch == 'arm64'
+
+ext.javafxPlatform = os.contains('win') ? 'win'
+        : os.contains('mac') ? (aarch64 ? 'mac-aarch64' : 'mac')
+        : (aarch64 ? 'linux-aarch64' : 'linux')
+
+def javaVersion = (findProperty('javaVersion') as String) as int
+
+subprojects {
+    apply plugin: 'java'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(javaVersion)
+        }
+        // Gradle puts dependencies on the module path when module-info.java exists.
+        modularity.inferModulePath = true
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = javaVersion
+        options.compilerArgs += ['-Xlint:all', '-Xlint:-requires-automatic']
+    }
+
+    tasks.withType(Javadoc).configureEach {
+        options.encoding = 'UTF-8'
+    }
+}

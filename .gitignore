@@ -1,0 +1,19 @@
+# Local reference material and private notes (incl. CLAUDE.md). Never committed.
+/ref/
+/CLAUDE.local.md
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
+
+# OS noise
+.DS_Store
+Thumbs.db
+/gradle/wrapper/gradle-wrapper.jar
+/CLAUDE.md

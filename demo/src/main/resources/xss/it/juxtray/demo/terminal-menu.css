@@ -1,0 +1,63 @@
+/*
+ * Demo theme: "Terminal". A look nothing like a native menu: square corners,
+ * monospace phosphor text, inverted selection and dashed separators. All of
+ * it is plain JavaFX CSS on top of the built-in theme.
+ */
+
+.context-menu {
+    -tray-background: #0a0f0a;
+    -tray-border: #33ff66;
+    -tray-text: #33ff66;
+    -tray-text-secondary: #1fae46;
+    -tray-hover: #33ff66;
+    -tray-pressed: #1fae46;
+    -tray-separator: #1fae46;
+    -tray-mark: #33ff66;
+    -tray-shadow: rgba(51, 255, 102, 0.35);
+
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+    -fx-border-width: 1;
+    -fx-padding: 4;
+    -fx-font-family: "Consolas";
+    -fx-font-size: 13px;
+    -fx-effect: dropshadow(gaussian, -tray-shadow, 14, 0.2, 0, 0);
+}
+
+.context-menu .menu-item {
+    -fx-background-radius: 0;
+    -fx-padding: 5 14 5 14;
+}
+
+/* Inverted selection, like a text-mode UI. */
+.context-menu .menu-item:focused .label,
+.context-menu .menu:showing .label {
+    -fx-text-fill: #0a0f0a;
+}
+
+.context-menu .menu:focused > .right-container > .arrow,
+.context-menu .menu:showing > .right-container > .arrow {
+    -fx-background-color: #0a0f0a;
+}
+
+.context-menu .radio-menu-item:focused:checked > .left-container > .radio,
+.context-menu .check-menu-item:focused:checked > .left-container > .check {
+    -fx-background-color: #0a0f0a;
+}
+
+.context-menu .separator-menu-item .line {
+    -fx-border-style: dashed;
+}
+
+/* Keep the app's danger colour readable on black. */
+.context-menu .menu-item.danger .label {
+    -fx-text-fill: #ff5f56;
+}
+
+.context-menu .menu-item.danger:focused {
+    -fx-background-color: #ff5f56;
+}
+
+.context-menu .menu-item.danger:focused .label {
+    -fx-text-fill: #0a0f0a;
+}

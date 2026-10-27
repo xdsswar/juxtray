@@ -1,0 +1,48 @@
+/*
+ * Demo theme: "Neon". Shows that tray menus are plain JavaFX CSS.
+ *
+ * It sits on top of Juxtray's built-in theme. The first rule only swaps the
+ * built-in palette variables; the rest adds things a native menu could never
+ * do: gradients, glow and per-item-type styling.
+ */
+
+.context-menu {
+    -tray-background: #140f2e;
+    -tray-border: #7c3aed;
+    -tray-text: #e9d5ff;
+    -tray-text-secondary: #a78bfa;
+    -tray-hover: rgba(167, 139, 250, 0.18);
+    -tray-pressed: rgba(167, 139, 250, 0.30);
+    -tray-separator: rgba(167, 139, 250, 0.25);
+    -tray-mark: #f0abfc;
+    -tray-shadow: rgba(124, 58, 237, 0.55);
+
+    -fx-background-color: linear-gradient(to bottom right, #1e1446, #0b0820);
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-padding: 6;
+    -fx-font-size: 14px;
+}
+
+/* The root tray menu only (submenus lack this class). */
+.context-menu.tray-menu {
+    -fx-border-width: 1.5;
+}
+
+.context-menu .menu-item {
+    -fx-background-radius: 8;
+    -fx-padding: 8 14 8 14;
+}
+
+.context-menu .menu-item:focused {
+    -fx-background-color: linear-gradient(to right, rgba(124, 58, 237, 0.55), rgba(236, 72, 153, 0.35));
+}
+
+.context-menu .menu-item:focused .label {
+    -fx-text-fill: white;
+    -fx-effect: dropshadow(gaussian, #f0abfc, 8, 0.3, 0, 0);
+}
+
+.context-menu .radio-menu-item:checked .label {
+    -fx-font-weight: bold;
+}

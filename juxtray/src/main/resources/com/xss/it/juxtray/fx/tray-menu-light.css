@@ -1,0 +1,109 @@
+/*
+ * Juxtray built-in tray menu theme: LIGHT.
+ *
+ * Loaded before user stylesheets, so every rule here can be overridden.
+ * The palette is defined as looked-up colours on .context-menu; restyling
+ * often only needs a user stylesheet that redefines those variables:
+ *
+ *     .context-menu { -tray-background: #1e1b4b; -tray-text: #e0e7ff; }
+ *
+ * Only colours can be looked-up variables in JavaFX CSS; sizes are literals.
+ *
+ * Selectors are the standard JavaFX ones (.context-menu, .menu-item, .menu,
+ * .check-menu-item, .radio-menu-item, .separator-menu-item ...). The root
+ * menu also carries the extra style class .tray-menu.
+ */
+
+.context-menu {
+    /* ---- palette ---- */
+    -tray-background: #f9f9f9;
+    -tray-border: rgba(0, 0, 0, 0.10);
+    -tray-text: #1a1a1a;
+    -tray-text-secondary: #6b6b6b;
+    -tray-hover: rgba(0, 0, 0, 0.055);
+    -tray-pressed: rgba(0, 0, 0, 0.09);
+    -tray-separator: rgba(0, 0, 0, 0.09);
+    -tray-mark: #1a1a1a;
+    -tray-shadow: rgba(0, 0, 0, 0.20);
+
+    /* ---- container ---- */
+    -fx-background-color: -tray-background;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-border-color: -tray-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-padding: 4;
+    -fx-effect: dropshadow(gaussian, -tray-shadow, 18, 0, 0, 6);
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 13px;
+}
+
+/* ---- items ---- */
+.context-menu .menu-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
+    -fx-padding: 6 12 6 12;
+}
+
+.context-menu .menu-item .label {
+    -fx-text-fill: -tray-text;
+}
+
+.context-menu .menu-item:focused {
+    -fx-background-color: -tray-hover;
+}
+
+.context-menu .menu-item:focused .label {
+    -fx-text-fill: -tray-text;
+}
+
+.context-menu .menu-item:pressed {
+    -fx-background-color: -tray-pressed;
+}
+
+.context-menu .menu-item:disabled {
+    -fx-opacity: 0.4;
+}
+
+.context-menu .menu-item .accelerator-text,
+.context-menu .menu-item:focused .accelerator-text {
+    -fx-text-fill: -tray-text-secondary;
+}
+
+/* ---- check / radio marks ---- */
+.context-menu .check-menu-item:checked > .left-container > .check,
+.context-menu .check-menu-item:focused:checked > .left-container > .check,
+.context-menu .radio-menu-item:checked > .left-container > .radio,
+.context-menu .radio-menu-item:focused:checked > .left-container > .radio {
+    -fx-background-color: -tray-mark;
+}
+
+/* ---- submenu arrow ---- */
+.context-menu .menu > .right-container > .arrow,
+.context-menu .menu:focused > .right-container > .arrow,
+.context-menu .menu:showing > .right-container > .arrow {
+    -fx-background-color: -tray-text-secondary;
+}
+
+.context-menu .menu:showing {
+    -fx-background-color: -tray-hover;
+}
+
+/* ---- separators ---- */
+.context-menu .separator-menu-item {
+    -fx-padding: 4 4 4 4;
+}
+
+.context-menu .separator-menu-item:focused {
+    -fx-background-color: transparent;
+}
+
+/* Modena draws the line on .separator .line with two stacked borders; replace both with one. */
+.context-menu .separator:horizontal .line,
+.context-menu .separator-menu-item .line {
+    -fx-border-color: -tray-separator transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-border-insets: 0;
+    -fx-padding: 0;
+}

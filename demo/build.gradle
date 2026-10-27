@@ -1,0 +1,19 @@
+/*
+ * demo: sample JavaFX application showing what juxtray can do.
+ * Run with: gradlew :demo:run
+ */
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':juxtray')
+}
+
+application {
+    mainModule = 'xss.it.juxtray.demo'
+    mainClass = 'xss.it.juxtray.demo.DemoApp'
+    // Juxtray calls Win32 through FFM, and JavaFX loads its own native libraries;
+    // grant both access explicitly so the JVM stays quiet.
+    applicationDefaultJvmArgs = ['--enable-native-access=xss.it.juxtray,javafx.graphics']
+}

@@ -1,0 +1,20 @@
+/*
+ * App-specific menu rules, added on top of every theme in the demo.
+ * Shows that your own style classes work in tray menus exactly as anywhere
+ * else in JavaFX.
+ */
+
+/* The Exit item carries the custom style class "danger" (set in DemoApp). */
+.context-menu .menu-item.danger .label {
+    -fx-text-fill: #e5484d;
+}
+
+.context-menu .menu-item.danger:focused {
+    -fx-background-color: rgba(229, 72, 77, 0.14);
+}
+
+/* Status dots are Circle graphics; give them a soft ring. */
+.context-menu .status-dot {
+    -fx-stroke: rgba(0, 0, 0, 0.15);
+    -fx-stroke-width: 1;
+}

@@ -1,0 +1,23 @@
+/*
+ * Root settings: declares the two modules of the build.
+ *
+ *   juxtray : the tray icon library itself (published artifact).
+ *   demo    : a JavaFX sample application that consumes the library.
+ */
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'juxtray-build'
+
+include 'juxtray'
+include 'demo'
