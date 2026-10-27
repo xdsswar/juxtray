@@ -537,12 +537,12 @@ tray.showNotification(n);
 Notifications are drawn by JavaFX, not by the OS, so they look the same everywhere and you style them with CSS like the menu. They are popups owned by an invisible, always-on-top helper window. That keeps them above other apps and out of the taskbar and Alt+Tab, and they **never take the keyboard focus** from whatever the user is typing in.
 
 **Behaviour**
-- They stack in the corner next to the taskbar (bottom-right for a bottom taskbar). Change that with `tray.setNotificationPosition(Pos.TOP_RIGHT)`; corners and edge centres are supported.
+- They stack in the corner next to the taskbar (bottom-right for a bottom taskbar). Change that with `tray.setNotificationPosition(Pos.TOP_RIGHT)`; corners and edge centres are supported. Notifications always stack from the top or bottom edge, so a vertical part other than `TOP` means the bottom (`CENTER_LEFT` acts like `BOTTOM_LEFT`).
 - The newest sits nearest the edge. When one closes, the others glide into place.
 - `tray.setMaxNotifications(4)` (the default) caps the stack; the oldest closes when one more opens.
 - A countdown bar runs down; **hovering pauses it**. Clicking the notification runs `onAction` and closes it, and so does choosing an action button (after the button's own handler).
-- Everything is live: change `title`, `message`, `type`, `image`, `graphic`, `duration` or the actions while it shows. The demo's **Live progress** button does exactly that.
-- `onShown`, `onHidden`, `showing`, `hide()`, and `tray.hideNotifications()` for all of them.
+- Everything is live: change `title`, `message`, `type`, `image`, `graphic`, `duration`, the actions or the style classes while it shows. The demo's **Live progress** button does exactly that.
+- `onShown`, `onHidden`, `showing`, `hide()`, and `tray.hideNotifications()` for all of them. Showing a notification again while it is still fading out brings it straight back: `onHidden` fires first, then `onShown`.
 
 **Animations:** `tray.setNotificationAnimation(...)` with `SLIDE` (default: slides in from the nearest screen edge), `FADE`, `ZOOM` or `NONE`.
 

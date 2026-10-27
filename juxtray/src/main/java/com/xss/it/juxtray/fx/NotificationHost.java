@@ -179,6 +179,12 @@ public final class NotificationHost {
     /** Open notifications, newest first. Closing ones are already removed. */
     private final List<Toast> toasts = new ArrayList<>();
 
+    /**
+     * Notifications playing their exit animation: out of the stack, but still
+     * on screen and not yet reported as hidden.
+     */
+    private final List<Toast> leaving = new ArrayList<>();
+
     /** Number of popups still on screen, including those playing their exit animation. */
     private int onScreen;
 
@@ -250,6 +256,9 @@ public final class NotificationHost {
                 return false;
             }
         }
+        // Shown again while its exit animation still plays: end that one now. Otherwise its
+        // onHidden would run after this new one opened, and mark a visible notification hidden.
+        finishLeaving(notification);
         Toast toast = new Toast(notification, onHidden);
         toasts.addFirst(toast);
         toast.open();
@@ -274,6 +283,10 @@ public final class NotificationHost {
                 toast.close(animate);
             }
         }
+        if (!animate) {
+            // "At once" also cuts short an exit animation that is already playing.
+            finishLeaving(notification);
+        }
     }
 
     /**
@@ -284,6 +297,24 @@ public final class NotificationHost {
     public void hideAll(boolean animate) {
         for (Toast toast : List.copyOf(toasts)) {
             toast.close(animate);
+        }
+        if (!animate) {
+            for (Toast toast : List.copyOf(leaving)) {
+                toast.finish();
+            }
+        }
+    }
+
+    /**
+     * Ends the exit animation of a notification at once, if one is playing.
+     *
+     * @param notification the notification
+     */
+    private void finishLeaving(TrayNotification notification) {
+        for (Toast toast : List.copyOf(leaving)) {
+            if (toast.notification == notification) {
+                toast.finish();
+            }
         }
     }
 
@@ -460,6 +491,9 @@ public final class NotificationHost {
             contentChanged();
         };
 
+        /** Keeps the root's style classes in sync with {@link TrayNotification#getStyleClass()}. */
+        private final InvalidationListener styleClassListener = _ -> updateStyleClasses();
+
         /** Closes the notification after an action button fired. */
         private final EventHandler<ActionEvent> actionCloser = _ -> close(true);
 
@@ -483,6 +517,9 @@ public final class NotificationHost {
 
         /** Whether closing has started. */
         private boolean closing;
+
+        /** Whether {@link #finish()} has run; the popup is gone for good then. */
+        private boolean finished;
 
         /**
          * Builds the node tree and binds it to the notification.
@@ -540,8 +577,7 @@ public final class NotificationHost {
             timerTrack.managedProperty().bind(timerTrack.visibleProperty());
 
             root.getChildren().addAll(body, actionsBox, timerTrack);
-            root.getStyleClass().add(STYLE_CLASS);
-            root.getStyleClass().addAll(notification.getStyleClass());
+            updateStyleClasses();
             root.setOpacity(0);
             // A click on the notification itself (not on a button) is its action.
             root.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
@@ -589,7 +625,25 @@ public final class NotificationHost {
             notification.typeProperty().addListener(graphicListener);
             notification.durationProperty().addListener(durationListener);
             notification.getActions().addListener(actionsListener);
+            notification.getStyleClass().addListener(styleClassListener);
             updateActions();
+        }
+
+        /**
+         * Gives the root {@code tray-notification} plus the notification's own
+         * style classes. Called once at creation and whenever that list changes,
+         * so classes added or removed while the notification shows apply at once.
+         */
+        private void updateStyleClasses() {
+            // The root is a plain VBox with no style classes of its own, so it can be rebuilt.
+            List<String> classes = new ArrayList<>();
+            classes.add(STYLE_CLASS);
+            classes.addAll(notification.getStyleClass());
+            root.getStyleClass().setAll(classes);
+            if (popup.isShowing()) {
+                // A class can change padding, width or font: measure again and re-flow.
+                contentChanged();
+            }
         }
 
         /**
@@ -885,6 +939,8 @@ public final class NotificationHost {
                 finish();
                 return;
             }
+            // Still on screen until the animation ends; tracked so it can be cut short.
+            leaving.add(this);
             List<KeyValue> end = new ArrayList<>();
             end.add(new KeyValue(root.opacityProperty(), 0, EASE_IN));
             switch (kind) {
@@ -908,10 +964,28 @@ public final class NotificationHost {
 
         /**
          * Final clean-up: hides the popup, removes every listener from the
-         * notification and reports that it is gone.
+         * notification and reports that it is gone. Runs when the exit
+         * animation ends, or earlier to cut it short; only the first call
+         * does anything.
          */
         private void finish() {
-            transition = null;
+            if (finished) {
+                return;
+            }
+            finished = true;
+            // Normally the exit animation itself got us here; when cut short it must not
+            // keep running (its onFinished would call back into a finished toast).
+            closing = true;
+            toasts.remove(this);
+            leaving.remove(this);
+            if (timer != null) {
+                timer.stop();
+                timer = null;
+            }
+            if (transition != null) {
+                transition.stop();
+                transition = null;
+            }
             if (glide != null) {
                 glide.stop();
                 glide = null;
@@ -924,6 +998,7 @@ public final class NotificationHost {
             notification.typeProperty().removeListener(graphicListener);
             notification.durationProperty().removeListener(durationListener);
             notification.getActions().removeListener(actionsListener);
+            notification.getStyleClass().removeListener(styleClassListener);
             for (Button button : wiredActions) {
                 button.removeEventHandler(ActionEvent.ACTION, actionCloser);
             }

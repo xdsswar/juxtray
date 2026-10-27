@@ -26,7 +26,7 @@ import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
-import javafx.beans.value.ChangeListener;
+import javafx.beans.InvalidationListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
@@ -132,9 +132,16 @@ public final class TrayIcon implements AutoCloseable {
     /** User stylesheets for the menu. */
     private final ObservableList<String> stylesheets = FXCollections.observableArrayList();
 
-    /** Re-applies the image once a background-loading image has finished. */
-    private final ChangeListener<Number> imageProgressListener = (_, _, progress) -> {
-        if (progress.doubleValue() >= 1.0) {
+    /**
+     * Re-applies the image once a background-loading image has finished, or
+     * has failed. It watches both {@code progress} and {@code error}, because
+     * a failed background load is reported through {@code error} and is not
+     * guaranteed to also drive the progress to 1.
+     */
+    private final InvalidationListener imageLoadListener = _ -> {
+        Image current = getImage();
+        // Reading the values re-validates the properties, so later changes are reported again.
+        if (current != null && (current.isError() || current.getProgress() >= 1.0)) {
             applyImage();
         }
     };
@@ -209,14 +216,26 @@ public final class TrayIcon implements AutoCloseable {
         checkFxThread();
         // The native listener runs on the Win32 thread; hop to JavaFX before touching anything.
         peer = NativeTrays.create(event -> Platform.runLater(() -> dispatch(event)));
-        menuHost = new MenuHost(stylesheets, useDefaultTheme, colorScheme, styleSource, peer::activateWindow);
-        notificationHost = new NotificationHost(stylesheets, useDefaultTheme, colorScheme, styleSource,
-                notificationPosition, notificationAnimation, maxNotifications, this::getImage,
-                peer::runWithoutActivation, notificationSound, notificationVolume, useDefaultSounds);
+        MenuHost menu = null;
+        try {
+            menu = new MenuHost(stylesheets, useDefaultTheme, colorScheme, styleSource, peer::activateWindow);
+            notificationHost = new NotificationHost(stylesheets, useDefaultTheme, colorScheme, styleSource,
+                    notificationPosition, notificationAnimation, maxNotifications, this::getImage,
+                    peer::runWithoutActivation, notificationSound, notificationVolume, useDefaultSounds);
+        } catch (RuntimeException | Error e) {
+            // The icon is already in the tray; don't leave it there (and its HICON alive) when
+            // the constructor fails, since the caller never gets an object to close.
+            if (menu != null) {
+                menu.dispose();
+            }
+            peer.close();
+            throw e;
+        }
+        menuHost = menu;
 
         image.addListener((_, oldImage, _) -> {
             if (oldImage != null) {
-                oldImage.progressProperty().removeListener(imageProgressListener);
+                unwatchLoading(oldImage);
             }
             applyImage();
         });
@@ -592,8 +611,13 @@ public final class TrayIcon implements AutoCloseable {
     /**
      * Where notifications appear. Corners and edge centres are supported:
      * the vertical part picks the top or bottom edge, the horizontal part
-     * the left side, centre or right side. {@code null} (the default) picks
-     * the corner next to the taskbar, where the tray is.
+     * the left side, centre or right side. Notifications always stack from a
+     * screen edge, so a vertical part other than {@code TOP} (such as
+     * {@code CENTER} or {@code BASELINE}) means the bottom edge: for example
+     * {@link Pos#CENTER_LEFT} behaves like {@link Pos#BOTTOM_LEFT}.
+     * {@code null} (the default) picks the corner next to the taskbar, where
+     * the tray is. Notifications are shown on the primary screen, which is
+     * where the Windows tray lives.
      *
      * @return the property
      */
@@ -894,7 +918,7 @@ public final class TrayIcon implements AutoCloseable {
         closed = true;
         Image current = getImage();
         if (current != null) {
-            current.progressProperty().removeListener(imageProgressListener);
+            unwatchLoading(current);
         }
         menuHost.dispose();
         notificationHost.dispose();
@@ -927,18 +951,32 @@ public final class TrayIcon implements AutoCloseable {
             return;
         }
         if (current.isError()) {
+            // Stop watching first: error and progress may both fire, and the failure is logged once.
+            unwatchLoading(current);
             LOG.log(Level.WARNING, "Tray icon image failed to load: " + current.getUrl(), current.getException());
             return;
         }
         if (current.getProgress() < 1.0) {
-            // Background loading: try again once done. Remove first so the listener is never registered twice.
-            current.progressProperty().removeListener(imageProgressListener);
-            current.progressProperty().addListener(imageProgressListener);
+            // Background loading: try again once done (or failed). Remove first so the listener
+            // is never registered twice.
+            unwatchLoading(current);
+            current.progressProperty().addListener(imageLoadListener);
+            current.errorProperty().addListener(imageLoadListener);
             return;
         }
-        current.progressProperty().removeListener(imageProgressListener);
+        unwatchLoading(current);
         IconPixels pixels = FxImages.toPixels(current);
         peer.setIcon(pixels == null ? null : PixelScaler.fit(pixels, peer.iconSize()));
+    }
+
+    /**
+     * Stops waiting for an image to finish loading.
+     *
+     * @param target the image that was being watched
+     */
+    private void unwatchLoading(Image target) {
+        target.progressProperty().removeListener(imageLoadListener);
+        target.errorProperty().removeListener(imageLoadListener);
     }
 
     /**

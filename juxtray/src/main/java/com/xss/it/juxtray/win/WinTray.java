@@ -18,6 +18,7 @@ import java.lang.foreign.MemorySegment;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import javafx.scene.input.MouseButton;
+import xss.it.juxtray.TrayException;
 
 /**
  * One Windows notification-area icon, driven through {@code Shell_NotifyIconW}.
@@ -249,7 +250,8 @@ public final class WinTray implements NativeTray {
      *
      * <p>Windows: stops the hover timer, sends {@code NIM_DELETE}, stops
      * routing callbacks to this icon and destroys its {@code HICON}. The
-     * native part runs asynchronously on the Win32 thread.</p>
+     * native part runs asynchronously on the Win32 thread. Never throws: if
+     * that thread has stopped, the failure is only logged.</p>
      */
     @Override
     public void close() {
@@ -257,13 +259,19 @@ public final class WinTray implements NativeTray {
             return;
         }
         closed = true;
-        host.execute(() -> {
-            User32.killTimer(host.hwnd(), id);
-            removeFromShell();
-            host.unregister(this);
-            User32.destroyIcon(icon);
-            icon = MemorySegment.NULL;
-        });
+        try {
+            host.execute(() -> {
+                User32.killTimer(host.hwnd(), id);
+                removeFromShell();
+                host.unregister(this);
+                User32.destroyIcon(icon);
+                icon = MemorySegment.NULL;
+            });
+        } catch (TrayException e) {
+            // The Win32 thread is gone, so nobody can run the clean-up there any more. Closing must
+            // not fail because of that; the shutdown hook still removes the icon from the shell.
+            LOG.log(Level.WARNING, "Could not close the tray icon", e);
+        }
     }
 
     // ---- Win32 thread -------------------------------------------------------------------
@@ -306,9 +314,16 @@ public final class WinTray implements NativeTray {
         if (closed) {
             return;
         }
+        if (hovering) {
+            // The old icon is gone, and with it the hover. Close it properly (timer off, EXITED
+            // sent), or the next WM_MOUSEMOVE would report a second ENTERED without an EXITED.
+            User32.killTimer(host.hwnd(), id);
+            hovering = false;
+            lastHoverPosition = null;
+            emit(Type.EXITED, null);
+        }
         // The new Explorer does not know us, but be safe in case it kept a stale entry.
         removeFromShell();
-        hovering = false;
         add();
         // The new taskbar may live on another monitor, or at another scale.
         refreshIconSize();

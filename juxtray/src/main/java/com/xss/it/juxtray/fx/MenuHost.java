@@ -227,10 +227,15 @@ public final class MenuHost {
      */
     public void hide() {
         if (current != null) {
-            // The showing listener does the clean-up.
+            // Normally the showing listener does the clean-up.
             current.hide();
         }
-        if (current == null && stage.isShowing()) {
+        if (current != null) {
+            // The listener did not run: the menu never actually opened (for example because it
+            // was already showing somewhere else), so hide() changed nothing. Clean up anyway,
+            // or the host stage and the taken-over popup settings would stay behind.
+            onMenuHidden();
+        } else if (stage.isShowing()) {
             stage.hide();
         }
     }

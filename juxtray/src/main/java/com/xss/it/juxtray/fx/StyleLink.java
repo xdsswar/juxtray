@@ -88,7 +88,7 @@ public final class StyleLink {
     private final ListChangeListener<Window> windowTracker = change -> {
         while (change.next()) {
             for (Window removed : change.getRemoved()) {
-                attached.remove(removed);
+                detach(removed);
             }
             for (Window added : change.getAddedSubList()) {
                 // Only popups are styled here; the host's own scene is handled by update().
@@ -229,6 +229,28 @@ public final class StyleLink {
         Mirrored mirrored = new Mirrored();
         attached.put(window, mirrored);
         apply(window.getScene(), mirrored);
+    }
+
+    /**
+     * Stops styling a popup that just went away, and takes the mirrored root
+     * state back off it.
+     *
+     * <p>Context menus and their submenus are reused: the same popup window,
+     * with the same scene root, is shown again the next time the menu opens.
+     * If the mirrored classes stayed on that root, a fresh {@link Mirrored}
+     * would not know about them when the popup reappears, so a class the
+     * style source has dropped in the meantime (for example {@code dark}
+     * after the application switched to light) would stick to the menu
+     * forever.</p>
+     *
+     * @param window the popup that was hidden
+     */
+    private void detach(Window window) {
+        Mirrored mirrored = attached.remove(window);
+        Scene scene = window.getScene();
+        if (mirrored != null && scene != null && scene.getRoot() != null) {
+            mirrored.applyTo(scene.getRoot(), null);
+        }
     }
 
     /**

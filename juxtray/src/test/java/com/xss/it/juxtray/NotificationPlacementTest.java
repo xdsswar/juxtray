@@ -63,6 +63,16 @@ class NotificationPlacementTest {
         assertEquals((1920 - 360) / 2.0, p.getFirst().getX());
     }
 
+    /** A vertical part other than TOP stacks from the bottom edge, as documented on TrayIcon. */
+    @Test
+    void verticalCentreMeansBottom() {
+        List<Dimension2D> sizes = List.of(SIZE, SIZE);
+        assertEquals(NotificationPlacement.stack(BOTTOM_TASKBAR, Pos.BOTTOM_LEFT, sizes),
+                NotificationPlacement.stack(BOTTOM_TASKBAR, Pos.CENTER_LEFT, sizes));
+        assertEquals(NotificationPlacement.stack(BOTTOM_TASKBAR, Pos.BOTTOM_RIGHT, sizes),
+                NotificationPlacement.stack(BOTTOM_TASKBAR, Pos.BASELINE_RIGHT, sizes));
+    }
+
     /** Works on a secondary screen with negative coordinates. */
     @Test
     void negativeCoordinates() {

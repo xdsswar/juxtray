@@ -90,6 +90,13 @@ final class WinTrayHost {
     private volatile int taskbarCreatedMessage;
 
     /**
+     * Set when the message loop has ended. From then on nothing drains the
+     * task queue, so {@link #execute} refuses new work instead of letting
+     * {@link #call} wait forever.
+     */
+    private volatile boolean stopped;
+
+    /**
      * Timer id for the debounced "displays changed" re-check. Tray timers use
      * their small positive {@code uID}s, so this value can never collide.
      */
@@ -175,15 +182,34 @@ final class WinTrayHost {
      * thread, the task runs immediately.
      *
      * @param task the work to do
+     * @throws TrayException if the Win32 thread has stopped
      */
     void execute(Runnable task) {
         if (Thread.currentThread() == thread) {
             task.run();
             return;
         }
+        if (stopped) {
+            throw stoppedFailure();
+        }
         tasks.add(task);
+        // The loop may have ended between the check and add(). Its final drain then either ran
+        // the task already, or never saw it; in the second case remove() succeeds and we report
+        // it, because nothing else ever will.
+        if (stopped && tasks.remove(task)) {
+            throw stoppedFailure();
+        }
         // Wake the message loop; it drains the queue when it handles WM_APP_TASKS.
         User32.postMessage(hwnd, WM_APP_TASKS, 0L, 0L);
+    }
+
+    /**
+     * The exception for work handed to a Win32 thread that is no longer running.
+     *
+     * @return the exception to throw
+     */
+    private static TrayException stoppedFailure() {
+        return new TrayException("The Win32 tray thread has stopped");
     }
 
     /**
@@ -269,6 +295,11 @@ final class WinTrayHost {
             if (!ready.completeExceptionally(t)) {
                 LOG.log(Level.ERROR, "Win32 tray thread died", t);
             }
+        } finally {
+            // Refuse new work, then run what is already queued one last time, so no caller of
+            // call() is left waiting for a result that would never come.
+            stopped = true;
+            drainTasks();
         }
     }
 
