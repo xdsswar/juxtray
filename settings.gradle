@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'juxtray-build'
+rootProject.name = 'juxtray'
 
 include 'juxtray'
 include 'demo'
