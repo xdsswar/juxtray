@@ -36,7 +36,8 @@ import javafx.stage.Window;
  *
  * <p>The style source also lends its user-agent stylesheet, and the style
  * classes, inline style and pseudo-classes of its root node. They are
- * mirrored onto the root of each popup, so theme rules written against the
+ * mirrored onto the host scene's root and the root of each popup, so theme
+ * rules written against the
  * application root (for example {@code .root.dark .context-menu} or
  * {@code .root:dark}) match inside tray menus and notifications too. All of
  * this is live: when the application switches theme, open menus and
@@ -74,6 +75,21 @@ public final class StyleLink {
 
     /** The application scene to follow, or a {@code null} value for none. */
     private final ObservableValue<Scene> styleSource;
+
+    /**
+     * What was mirrored onto the host scene's root.
+     *
+     * <p>This is what makes {@code .root.dark .context-menu} work for menus.
+     * CSS selectors match along the <em>styleable</em> parent chain, and for a
+     * {@code ContextMenu} owned by a window that chain is
+     * {@code ContextMenuContent → ContextMenu → owner scene root}: the host
+     * root, not the root of the popup's own scene. Plain {@code Popup}s
+     * (notifications) are matched through their popup root instead, which is
+     * why popup roots are mirrored too. Changing a popup root also makes an
+     * open menu recompute its CSS, which a change on the host root alone
+     * would not, since the menu's nodes are not in the host's scene.</p>
+     */
+    private final Mirrored hostMirrored = new Mirrored();
 
     /** Popup scenes currently styled by this link, with what was mirrored onto their roots. */
     private final Map<Window, Mirrored> attached = new HashMap<>();
@@ -215,8 +231,8 @@ public final class StyleLink {
         stylesheets = List.copyOf(sheets);
 
         // Popups copy their root owner's stylesheets when they open, so the host scene must
-        // always carry the full list.
-        apply(host.getScene(), null);
+        // always carry the full list. Its root also gets the mirrored state: see hostMirrored.
+        apply(host.getScene(), hostMirrored);
         attached.forEach((window, mirrored) -> apply(window.getScene(), mirrored));
     }
 
@@ -254,12 +270,11 @@ public final class StyleLink {
     }
 
     /**
-     * Applies the current stylesheets, user-agent stylesheet and (for popups)
-     * mirrored root state to one scene.
+     * Applies the current stylesheets, user-agent stylesheet and mirrored
+     * root state to one scene.
      *
      * @param scene    the scene, or {@code null} (ignored)
-     * @param mirrored what was mirrored onto this scene's root before, or
-     *                 {@code null} for the host scene (its root is never shown)
+     * @param mirrored what was mirrored onto this scene's root before
      */
     private void apply(Scene scene, Mirrored mirrored) {
         if (scene == null) {
@@ -269,7 +284,7 @@ public final class StyleLink {
             scene.getStylesheets().setAll(stylesheets);
         }
         scene.setUserAgentStylesheet(trackedScene == null ? null : trackedScene.getUserAgentStylesheet());
-        if (mirrored != null && scene.getRoot() != null) {
+        if (scene.getRoot() != null) {
             mirrored.applyTo(scene.getRoot(), trackedRoot);
         }
     }
@@ -290,9 +305,10 @@ public final class StyleLink {
     }
 
     /**
-     * What has been mirrored from the style source onto one popup root, so it
-     * can be taken back off precisely without touching the popup's own
-     * classes (such as {@code root} and {@code popup}).
+     * What has been mirrored from the style source onto one root (the host
+     * scene's or a popup's), so it can be taken back off precisely without
+     * touching the root's own classes (such as {@code root} and
+     * {@code popup}), pseudo-classes or inline style.
      */
     private static final class Mirrored {
 
@@ -302,29 +318,34 @@ public final class StyleLink {
         /** Pseudo-classes we switched on. */
         private final Set<PseudoClass> pseudoClasses = new HashSet<>();
 
-        /** Inline style we set, or {@code null} if we never set one. */
-        private String style;
+        /** Whether {@link #ownStyle} has been captured yet. */
+        private boolean ownStyleKnown;
+
+        /** The target's own inline style, from before anything was mirrored onto it. */
+        private String ownStyle;
 
         /**
-         * Makes a popup root carry the source root's classes, inline style and
+         * Makes a root carry the source root's classes, inline style and
          * pseudo-classes, replacing what was mirrored before.
          *
-         * @param target the popup root
+         * @param target the host or popup root
          * @param source the style source root, or {@code null} to mirror nothing
          */
         void applyTo(Parent target, Parent source) {
+            if (!ownStyleKnown) {
+                // The host root has its own inline style (a transparent background); keep it.
+                ownStyle = target.getStyle();
+                ownStyleKnown = true;
+            }
             target.getStyleClass().removeAll(styleClasses);
             styleClasses.clear();
             for (PseudoClass pseudoClass : pseudoClasses) {
                 target.pseudoClassStateChanged(pseudoClass, false);
             }
             pseudoClasses.clear();
-            if (style != null && style.equals(target.getStyle())) {
-                target.setStyle(null);
-            }
-            style = null;
 
             if (source == null) {
+                target.setStyle(ownStyle);
                 return;
             }
             for (String styleClass : source.getStyleClass()) {
@@ -334,18 +355,25 @@ public final class StyleLink {
                 }
             }
             for (PseudoClass pseudoClass : source.getPseudoClassStates()) {
-                // Leave interaction states alone; they describe the source, not a theme.
+                // Leave interaction states alone; they describe the source, not a theme. Skip states
+                // the target already has, so taking ours off later never clears one of its own.
                 String name = pseudoClass.getPseudoClassName();
                 if (!name.equals("hover") && !name.equals("pressed") && !name.equals("focused")
-                        && !name.equals("focus-within") && !name.equals("focus-visible")) {
+                        && !name.equals("focus-within") && !name.equals("focus-visible")
+                        && !target.getPseudoClassStates().contains(pseudoClass)) {
                     target.pseudoClassStateChanged(pseudoClass, true);
                     pseudoClasses.add(pseudoClass);
                 }
             }
+            // The source's inline style goes after the target's own, so its declarations win.
             String sourceStyle = source.getStyle();
-            if (sourceStyle != null && !sourceStyle.isBlank()) {
+            if (sourceStyle == null || sourceStyle.isBlank()) {
+                target.setStyle(ownStyle);
+            } else if (ownStyle == null || ownStyle.isBlank()) {
                 target.setStyle(sourceStyle);
-                style = sourceStyle;
+            } else {
+                String separator = ownStyle.strip().endsWith(";") ? " " : "; ";
+                target.setStyle(ownStyle + separator + sourceStyle);
             }
         }
     }

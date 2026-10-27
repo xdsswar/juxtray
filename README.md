@@ -378,7 +378,7 @@ tray.setOnTrayEvent(event -> {
 All events have `source()` (the `TrayIcon`). They are delivered **on the JavaFX Application Thread**.
 
 - `position` is the cursor in **JavaFX screen coordinates**, so you can use it directly with `stage.setX/Y`.
-- `bounds` is the icon's rectangle in the same space. It is `Rectangle2D.EMPTY` when Windows can't tell, for example while the icon is in the collapsed overflow area.
+- `bounds` is the icon's rectangle in the same space. It is `Rectangle2D.EMPTY` when Windows can't tell. While the icon is in the collapsed overflow area, Windows reports the "show hidden icons" chevron instead (you may see that on the `Exit` sent as the flyout closes).
 
 ---
 

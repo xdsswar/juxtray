@@ -53,9 +53,10 @@ final class Shell32 {
      *
      * @param hwnd window that owns the icon
      * @param id   the icon's {@code uID}
-     * @return bounds in device pixels, or {@code null} when the shell cannot
-     *         tell (for example, while the icon is hidden in the closed
-     *         overflow flyout)
+     * @return bounds in device pixels, or {@code null} when the shell does
+     *         not know the icon (removed, or no taskbar yet). While the icon
+     *         sits in the closed overflow flyout, Windows 11 does not fail
+     *         but returns the bounds of the flyout's chevron button.
      */
     static PhysicalRect iconRect(MemorySegment hwnd, int id) {
         try (Arena arena = Arena.ofConfined()) {

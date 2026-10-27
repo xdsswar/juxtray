@@ -1068,9 +1068,14 @@ public final class TrayIcon implements AutoCloseable {
                 .orElse(Screen.getPrimary());
         double scaleX = screen.getOutputScaleX();
         double scaleY = screen.getOutputScaleY();
+        // The Robot reports the centre of the cursor's device pixel (cursor on device pixel 2442
+        // at 100 % reads 2442.5), while the OS gives that pixel's top-left corner. Step back half a
+        // device pixel so both name the same point; otherwise every bound is off by half a pixel.
+        double cornerX = cursor.getX() - 0.5 / scaleX;
+        double cornerY = cursor.getY() - 0.5 / scaleY;
         return new Rectangle2D(
-                cursor.getX() + (rect.left() - device.x()) / scaleX,
-                cursor.getY() + (rect.top() - device.y()) / scaleY,
+                cornerX + (rect.left() - device.x()) / scaleX,
+                cornerY + (rect.top() - device.y()) / scaleY,
                 rect.width() / scaleX,
                 rect.height() / scaleY);
     }

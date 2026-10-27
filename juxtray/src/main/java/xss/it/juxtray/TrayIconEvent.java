@@ -41,8 +41,10 @@ public sealed interface TrayIconEvent {
 
     /**
      * Area the icon occupies on screen, or {@link Rectangle2D#EMPTY} when the
-     * shell cannot tell (for example, when the icon sits in the overflow
-     * flyout and the flyout is closed).
+     * shell cannot tell. While the icon sits in the overflow area and that
+     * flyout is closed, Windows reports the bounds of the "show hidden icons"
+     * button instead; this can happen for the {@link Exit} sent when the
+     * flyout closes under the cursor.
      *
      * @return icon bounds in JavaFX screen coordinates
      */

@@ -5,7 +5,10 @@ import com.xss.it.juxtray.NotificationPlacement;
 import com.xss.it.juxtray.PixelScaler;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -86,7 +89,9 @@ import xss.it.juxtray.TrayNotification;
  * <p><strong>Layout:</strong> {@link NotificationPlacement} computes where
  * each notification goes. Notifications are measured after CSS is applied,
  * and re-measured when their content changes; the others then glide to
- * their new places.</p>
+ * their new places. Hosts of different tray icons share the screen
+ * corners: notifications in the same corner form one stack, whichever icon
+ * showed them.</p>
  *
  * <p>All methods must be called on the JavaFX Application Thread.</p>
  */
@@ -139,6 +144,17 @@ public final class NotificationHost {
 
     /** Counter used to give every host stage a unique title. */
     private static final AtomicInteger COUNTER = new AtomicInteger();
+
+    /**
+     * Every live host (one per tray icon). Notifications of all of them share
+     * the screen corners, so the stack is laid out across hosts: otherwise two
+     * tray icons would put their notifications exactly on top of each other.
+     * FX thread only.
+     */
+    private static final List<NotificationHost> HOSTS = new ArrayList<>();
+
+    /** Last {@link Toast#order} handed out; higher means newer. FX thread only. */
+    private static long lastOrder;
 
     /** The invisible owner of the popups. */
     private final Stage stage;
@@ -237,6 +253,7 @@ public final class NotificationHost {
         styleLink = new StyleLink(stage, LIGHT_THEME, DARK_THEME, userStylesheets, useDefaultTheme,
                 colorScheme, styleSource);
         position.addListener(positionListener);
+        HOSTS.add(this);
     }
 
     /**
@@ -324,6 +341,7 @@ public final class NotificationHost {
      */
     public void dispose() {
         hideAll(false);
+        HOSTS.remove(this);
         sounds.dispose();
         position.removeListener(positionListener);
         styleLink.dispose();
@@ -348,21 +366,32 @@ public final class NotificationHost {
     }
 
     /**
-     * Moves every open notification to its place in the stack.
+     * Moves every open notification, of every host, to its place in the stack.
+     *
+     * <p>Each host only ever changes its own notifications, but where they go
+     * depends on the others: notifications that end up in the same corner
+     * (whichever tray icon showed them) form one stack, newest nearest the
+     * edge. So every re-flow is done across all hosts.</p>
      *
      * @param animate whether already-placed notifications glide there
      */
-    private void layoutStack(boolean animate) {
-        if (toasts.isEmpty()) {
-            return;
+    private static void layoutStack(boolean animate) {
+        Map<Pos, List<Toast>> corners = new EnumMap<>(Pos.class);
+        for (NotificationHost host : HOSTS) {
+            if (!host.toasts.isEmpty()) {
+                corners.computeIfAbsent(host.resolvedPosition(), _ -> new ArrayList<>()).addAll(host.toasts);
+            }
         }
         // The tray lives on the primary screen's taskbar.
         Rectangle2D workArea = Screen.getPrimary().getVisualBounds();
-        List<Dimension2D> sizes = toasts.stream().map(Toast::size).toList();
-        List<Point2D> places = NotificationPlacement.stack(workArea, resolvedPosition(), sizes);
-        for (int i = 0; i < toasts.size(); i++) {
-            toasts.get(i).moveTo(places.get(i), animate);
-        }
+        corners.forEach((pos, stack) -> {
+            stack.sort(Comparator.comparingLong((Toast toast) -> toast.order).reversed());
+            List<Dimension2D> sizes = stack.stream().map(Toast::size).toList();
+            List<Point2D> places = NotificationPlacement.stack(workArea, pos, sizes);
+            for (int i = 0; i < stack.size(); i++) {
+                stack.get(i).moveTo(places.get(i), animate);
+            }
+        });
     }
 
     /**
@@ -433,6 +462,9 @@ public final class NotificationHost {
 
         /** The notification shown. */
         private final TrayNotification notification;
+
+        /** When it was opened, across all hosts; higher is newer, and newer sits nearer the edge. */
+        private final long order = ++lastOrder;
 
         /** Called once the popup is gone. */
         private final Runnable onHidden;

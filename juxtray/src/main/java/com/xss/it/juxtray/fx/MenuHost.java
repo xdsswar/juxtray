@@ -181,9 +181,36 @@ public final class MenuHost {
         // invisible, measure, move it to its final place, then reveal it. All of this happens in
         // one FX event, before the next render pulse, so there is no visible jump.
         menu.setOpacity(0);
-        menu.show(stage, x, y);
+        // Anchored on a node, not just the stage: only ContextMenu's show(Node, ...) overloads fire
+        // Menu.ON_SHOWING / ON_SHOWN, and the menu's skin needs those. Without them it keeps the
+        // keyboard position from the previous open, so Down after reopening skipped past the
+        // first item (it continued from wherever the mouse had last been).
+        menu.show(stage.getScene().getRoot(), x, y);
         place(menu, new Point2D(x, y));
+        clearInitialFocus(menu);
         menu.setOpacity(savedOpacity);
+    }
+
+    /**
+     * Gives the keyboard focus to the menu itself rather than to its first item.
+     *
+     * <p>The first time a menu's popup scene is shown, JavaFX's initial focus
+     * traversal focuses its first focus-traversable node: the first item.
+     * Menu themes draw {@code :focused} items as highlighted, so on that first
+     * open only, the top item looked hovered while the cursor was elsewhere.
+     * Later opens leave the focus on the menu content, which is the right
+     * state for a mouse-opened menu (as with native menus, nothing is
+     * selected until the user points at an item or presses an arrow key), so
+     * every open now starts there.</p>
+     *
+     * @param menu the menu that was just shown
+     */
+    private static void clearInitialFocus(ContextMenu menu) {
+        Skin<?> skin = menu.getSkin();
+        Node content = skin == null ? null : skin.getNode();
+        if (content != null) {
+            content.requestFocus();
+        }
     }
 
     /**
