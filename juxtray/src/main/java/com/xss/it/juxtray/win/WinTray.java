@@ -226,6 +226,27 @@ public final class WinTray implements NativeTray {
     /**
      * {@inheritDoc}
      *
+     * <p>Windows: remembers {@code GetForegroundWindow()}, runs the action,
+     * then hands the foreground back with {@code SetForegroundWindow}. If the
+     * action did activate our window, our process is now the foreground
+     * process and therefore allowed to do that. If it did not, the previous
+     * window still has the foreground and the call changes nothing. Both
+     * functions work from any thread, so this runs on the caller's.</p>
+     *
+     * @param showAction {@inheritDoc}
+     */
+    @Override
+    public void runWithoutActivation(Runnable showAction) {
+        MemorySegment previous = User32.foregroundWindow();
+        showAction.run();
+        if (!Win32.isNull(previous) && previous.address() != User32.foregroundWindow().address()) {
+            User32.setForegroundWindow(previous);
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     *
      * <p>Windows: stops the hover timer, sends {@code NIM_DELETE}, stops
      * routing callbacks to this icon and destroys its {@code HICON}. The
      * native part runs asynchronously on the Win32 thread.</p>

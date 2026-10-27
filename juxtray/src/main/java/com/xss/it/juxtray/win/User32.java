@@ -85,6 +85,10 @@ final class User32 {
     private static final MethodHandle SET_FOREGROUND_WINDOW = Win32.bind(USER32, "SetForegroundWindow",
             FunctionDescriptor.of(JAVA_INT, ADDRESS));
 
+    /** {@code HWND GetForegroundWindow(void);} */
+    private static final MethodHandle GET_FOREGROUND_WINDOW = Win32.bind(USER32, "GetForegroundWindow",
+            FunctionDescriptor.of(ADDRESS));
+
     /** {@code HWND FindWindowW(LPCWSTR lpClassName, LPCWSTR lpWindowName);} */
     private static final MethodHandle FIND_WINDOW = Win32.bind(USER32, "FindWindowW",
             FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS));
@@ -313,6 +317,34 @@ final class User32 {
             if (Win32.isNull(hwnd)) {
                 return false;
             }
+            return (int) SET_FOREGROUND_WINDOW.invokeExact(hwnd) != 0;
+        } catch (Throwable t) {
+            throw Win32.failure("SetForegroundWindow", t);
+        }
+    }
+
+    /**
+     * The window the user is currently working in.
+     *
+     * @return its {@code HWND}, or {@code NULL} when no window has the
+     *         foreground (for example while focus is changing)
+     */
+    static MemorySegment foregroundWindow() {
+        try {
+            return (MemorySegment) GET_FOREGROUND_WINDOW.invokeExact();
+        } catch (Throwable t) {
+            throw Win32.failure("GetForegroundWindow", t);
+        }
+    }
+
+    /**
+     * Makes a window the foreground window.
+     *
+     * @param hwnd the window
+     * @return {@code true} if Windows allowed it
+     */
+    static boolean setForegroundWindow(MemorySegment hwnd) {
+        try {
             return (int) SET_FOREGROUND_WINDOW.invokeExact(hwnd) != 0;
         } catch (Throwable t) {
             throw Win32.failure("SetForegroundWindow", t);

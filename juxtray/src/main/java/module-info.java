@@ -13,6 +13,9 @@ module xss.it.juxtray {
     // JavaFX types appear in our public API, so consumers get them transitively.
     requires transitive javafx.controls;
 
+    // Notification sounds (WAV/MP3) are played with javafx.scene.media.AudioClip.
+    requires javafx.media;
+
     // Public API.
     exports xss.it.juxtray;
 }

@@ -1,0 +1,236 @@
+/*
+ * Juxtray built-in tray notification theme: DARK.
+ *
+ * Same structure as tray-notification-light.css; only the palette differs.
+ * It is picked automatically when the OS colour scheme is dark.
+ */
+
+.tray-notification {
+    /* ---- palette ---- */
+    -tray-background: #2c2c2c;
+    -tray-border: rgba(255, 255, 255, 0.08);
+    -tray-border-hover: rgba(255, 255, 255, 0.16);
+    -tray-text: #ffffff;
+    -tray-text-secondary: #b4b4b4;
+    -tray-hover: rgba(255, 255, 255, 0.075);
+    -tray-pressed: rgba(255, 255, 255, 0.05);
+    -tray-button: #373737;
+    -tray-button-hover: #3d3d3d;
+    -tray-track: rgba(255, 255, 255, 0.08);
+    -tray-shadow: rgba(0, 0, 0, 0.50);
+    -tray-accent: #4cc2ff;
+    -tray-on-accent: #000000;
+    -tray-info: #4cc2ff;
+    -tray-success: #6ccb5f;
+    -tray-warning: #fce100;
+    -tray-error: #ff99a4;
+    -tray-glyph: #1c1c1c;
+
+    /* ---- container ---- */
+    -fx-background-color: -tray-background;
+    -fx-background-radius: 8;
+    -fx-border-color: -tray-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-effect: dropshadow(gaussian, -tray-shadow, 20, 0, 0, 6);
+    -fx-min-width: 364px;
+    -fx-pref-width: 364px;
+    -fx-max-width: 364px;
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 13px;
+    -fx-cursor: hand;
+}
+
+.tray-notification:hover {
+    -fx-border-color: -tray-border-hover;
+}
+
+/* ---- body: icon, text, close ---- */
+.tray-notification .notification-body {
+    -fx-spacing: 12;
+    -fx-padding: 14 8 14 16;
+    -fx-alignment: top-left;
+}
+
+.tray-notification .notification-graphic {
+    -fx-min-width: 32px;
+    -fx-pref-width: 32px;
+    -fx-max-width: 32px;
+    -fx-min-height: 32px;
+    -fx-pref-height: 32px;
+    -fx-max-height: 32px;
+}
+
+.tray-notification .notification-text {
+    -fx-spacing: 2;
+    -fx-padding: 1 0 0 0;
+}
+
+.tray-notification .notification-title {
+    -fx-font-family: "Segoe UI Semibold";
+    -fx-font-size: 14px;
+    -fx-text-fill: -tray-text;
+}
+
+.tray-notification .notification-message {
+    -fx-font-size: 13px;
+    -fx-text-fill: -tray-text-secondary;
+}
+
+/* The close button fades in while the notification is hovered. */
+.tray-notification .notification-close {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
+    -fx-padding: 7;
+    -fx-opacity: 0;
+    -fx-cursor: hand;
+}
+
+.tray-notification:hover .notification-close {
+    -fx-opacity: 1;
+}
+
+.tray-notification .notification-close:hover {
+    -fx-background-color: -tray-hover;
+}
+
+.tray-notification .notification-close:pressed {
+    -fx-background-color: -tray-pressed;
+}
+
+.tray-notification .notification-close-icon {
+    -fx-shape: "M1 0 L5 4 L9 0 L10 1 L6 5 L10 9 L9 10 L5 6 L1 10 L0 9 L4 5 L0 1 Z";
+    -fx-scale-shape: false;
+    -fx-position-shape: true;
+    -fx-background-color: -tray-text-secondary;
+    -fx-min-width: 10px;
+    -fx-min-height: 10px;
+    -fx-max-width: 10px;
+    -fx-max-height: 10px;
+}
+
+/* ---- built-in type icons: a coloured badge with a glyph, both pure CSS shapes ---- */
+.tray-notification .notification-icon {
+    -fx-background-color: -tray-accent;
+    -fx-background-radius: 14;
+    -fx-min-width: 28px;
+    -fx-min-height: 28px;
+    -fx-max-width: 28px;
+    -fx-max-height: 28px;
+}
+
+.tray-notification .notification-glyph {
+    -fx-background-color: -tray-glyph;
+    -fx-scale-shape: false;
+    -fx-position-shape: true;
+    -fx-min-width: 14px;
+    -fx-min-height: 14px;
+    -fx-max-width: 14px;
+    -fx-max-height: 14px;
+}
+
+.tray-notification:info .notification-icon {
+    -fx-background-color: -tray-info;
+}
+
+.tray-notification:info .notification-glyph {
+    -fx-shape: "M0 4.2 H2.4 V12.5 H0 Z M0 0 H2.4 V2.4 H0 Z";
+}
+
+.tray-notification:success .notification-icon {
+    -fx-background-color: -tray-success;
+}
+
+.tray-notification:success .notification-glyph {
+    -fx-shape: "M0 5.6 L1.7 3.9 L4.4 6.6 L10.3 0.7 L12 2.4 L4.4 10 Z";
+}
+
+/* Warning: a rounded triangle badge instead of a circle. */
+.tray-notification:warning .notification-icon {
+    -fx-background-color: -tray-warning;
+    -fx-background-radius: 0;
+    -fx-shape: "M14 1 C15 1 15.6 1.5 16 2.2 L27.6 23.6 C28.3 25 27.4 26.5 25.9 26.5 L2.1 26.5 C0.6 26.5 -0.3 25 0.4 23.6 L12 2.2 C12.4 1.5 13 1 14 1 Z";
+}
+
+.tray-notification:warning .notification-glyph {
+    -fx-shape: "M0 0 H2.4 V7 H0 Z M0 8.6 H2.4 V11 H0 Z";
+    -fx-translate-y: 2;
+}
+
+.tray-notification:error .notification-icon {
+    -fx-background-color: -tray-error;
+}
+
+.tray-notification:error .notification-glyph {
+    -fx-shape: "M1.4 0 L5 3.6 L8.6 0 L10 1.4 L6.4 5 L10 8.6 L8.6 10 L5 6.4 L1.4 10 L0 8.6 L3.6 5 L0 1.4 Z";
+}
+
+/* ---- action buttons ---- */
+.tray-notification .notification-actions {
+    -fx-spacing: 8;
+    -fx-padding: 0 14 14 16;
+    -fx-alignment: center-right;
+}
+
+.tray-notification .notification-action {
+    -fx-background-color: -tray-button;
+    -fx-background-radius: 4;
+    -fx-background-insets: 0;
+    -fx-border-color: -tray-border;
+    -fx-border-radius: 4;
+    -fx-text-fill: -tray-text;
+    -fx-font-size: 13px;
+    -fx-padding: 5 16 5 16;
+    -fx-cursor: hand;
+}
+
+.tray-notification .notification-action:hover {
+    -fx-background-color: -tray-button-hover;
+}
+
+.tray-notification .notification-action:pressed {
+    -fx-background-color: -tray-pressed;
+}
+
+/* Button.setDefaultButton(true) marks the main action. */
+.tray-notification .notification-action:default {
+    -fx-background-color: -tray-accent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -tray-on-accent;
+}
+
+.tray-notification .notification-action:default:hover {
+    -fx-opacity: 0.9;
+}
+
+/* ---- countdown: a thin bar that shrinks as time runs out (paused on hover) ---- */
+.tray-notification .notification-timer {
+    -fx-padding: 0 16 10 16;
+    -fx-min-height: 13px;
+    -fx-pref-height: 13px;
+    -fx-max-height: 13px;
+    -fx-background-color: -tray-track;
+    -fx-background-insets: 0 16 10 16;
+    -fx-background-radius: 2;
+}
+
+.tray-notification .notification-timer-bar {
+    -fx-background-color: -tray-accent;
+    -fx-background-radius: 2;
+}
+
+.tray-notification:info .notification-timer-bar {
+    -fx-background-color: -tray-info;
+}
+
+.tray-notification:success .notification-timer-bar {
+    -fx-background-color: -tray-success;
+}
+
+.tray-notification:warning .notification-timer-bar {
+    -fx-background-color: -tray-warning;
+}
+
+.tray-notification:error .notification-timer-bar {
+    -fx-background-color: -tray-error;
+}

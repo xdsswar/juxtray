@@ -1,13 +1,18 @@
 package xss.it.juxtray.demo;
 
+import java.io.File;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.nio.file.Path;
+import java.util.function.Function;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.SnapshotParameters;
 import javafx.scene.canvas.Canvas;
@@ -21,11 +26,17 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.Slider;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.image.Image;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
@@ -37,14 +48,21 @@ import javafx.scene.shape.Circle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.TextAlignment;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.util.Duration;
+import javafx.util.StringConverter;
 import xss.it.juxtray.Juxtray;
+import xss.it.juxtray.NotificationAnimation;
+import xss.it.juxtray.NotificationType;
 import xss.it.juxtray.TrayIcon;
 import xss.it.juxtray.TrayIconEvent;
+import xss.it.juxtray.TrayNotification;
 
 /**
- * Showcase for Juxtray: a tray icon with a CSS-styled JavaFX menu, live
- * controls for every tray property, and a log of tray mouse events.
+ * Showcase for Juxtray: a tray icon with a CSS-styled JavaFX menu, animated
+ * notifications, live controls for every tray property, app themes the tray
+ * follows, and a log of tray events.
  *
  * <p>Closing the window only hides it; the app keeps living in the tray. Use
  * <em>Exit</em> in the tray menu to quit.</p>
@@ -87,6 +105,38 @@ public final class DemoApp extends Application {
         }
     }
 
+    /** Which icon a notification from the Notifications tab shows. */
+    private enum IconChoice {
+        /** The type's built-in icon, or the tray icon for {@code NONE}. */
+        DEFAULT("Default (type icon / app icon)"),
+        /** A drawn 256 px image, resampled by Juxtray. */
+        IMAGE("Custom image"),
+        /** Any node: here, a spinning progress indicator. */
+        NODE("Custom node (spinner)");
+
+        /** Label shown in the combo box. */
+        final String label;
+
+        /**
+         * Creates a choice.
+         *
+         * @param label display label
+         */
+        IconChoice(String label) {
+            this.label = label;
+        }
+
+        /**
+         * Label for combo boxes.
+         *
+         * @return the display label
+         */
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
+
     /** The tray icon under test. */
     private TrayIcon tray;
 
@@ -98,6 +148,9 @@ public final class DemoApp extends Application {
 
     /** The Status submenu (kept so the screenshot mode can open it). */
     private Menu statusMenu;
+
+    /** Tray menu toggle: announce status changes with a notification. */
+    private CheckMenuItem notifyStatus;
 
     /** Command line flag that renders the README screenshots and exits. */
     private static final String SCREENSHOTS_FLAG = "--screenshots=";
@@ -129,13 +182,18 @@ public final class DemoApp extends Application {
         for (String arg : getParameters().getRaw()) {
             if (arg.startsWith(SCREENSHOTS_FLAG)) {
                 Path directory = Path.of(arg.substring(SCREENSHOTS_FLAG.length()));
-                new MenuShowcase(tray, statusMenu, directory, this::exit).run();
+                new MenuShowcase(tray, statusMenu, directory,
+                        () -> new NotificationShowcase(tray, drawBell(), directory, this::exit).run()).run();
                 return;
             }
         }
 
         stage.setTitle("Juxtray Demo");
-        stage.setScene(new Scene(buildControls(), 520, 560));
+        stage.setScene(new Scene(buildControls(), 580, 800));
+        AppTheme.LIGHT.applyTo(stage.getScene());
+        // The tray menu and notifications follow whatever scene the window shows: its
+        // stylesheets and its root's classes. Switching the app theme restyles the tray too.
+        tray.styleSourceProperty().bind(stage.sceneProperty());
         // Closing the window just sends the app back to the tray.
         stage.setOnCloseRequest(event -> {
             event.consume();
@@ -155,9 +213,13 @@ public final class DemoApp extends Application {
         MenuItem open = new MenuItem("Open Juxtray Demo");
         open.setOnAction(_ -> showWindow());
 
-        CheckMenuItem notifications = new CheckMenuItem("Notifications");
-        notifications.setSelected(true);
-        notifications.setOnAction(_ -> append("Notifications " + (notifications.isSelected() ? "on" : "off")));
+        notifyStatus = new CheckMenuItem("Notifications");
+        notifyStatus.setSelected(true);
+        notifyStatus.setOnAction(_ -> append("Notifications " + (notifyStatus.isSelected() ? "on" : "off")));
+
+        MenuItem test = new MenuItem("Send test notification");
+        test.setOnAction(_ -> tray.showNotification("Hello from the tray",
+                "This notification is a JavaFX node, styled with CSS.", NotificationType.INFO));
 
         // Status submenu: radio items that recolour the tray icon.
         statusMenu = new Menu("Status");
@@ -169,11 +231,7 @@ public final class DemoApp extends Application {
             RadioMenuItem item = new RadioMenuItem(value.label, dot);
             item.setToggleGroup(statusGroup);
             item.setSelected(value == Status.ONLINE);
-            item.setOnAction(_ -> {
-                tray.setImage(drawIcon(value));
-                tray.setTooltip("Juxtray Demo — " + value.label);
-                append("Status → " + value.label);
-            });
+            item.setOnAction(_ -> setStatus(value));
             statusMenu.getItems().add(item);
         }
 
@@ -185,21 +243,60 @@ public final class DemoApp extends Application {
         exit.getStyleClass().add("danger");
         exit.setOnAction(_ -> exit());
 
-        return new ContextMenu(open, new SeparatorMenuItem(), notifications, statusMenu, disabled,
+        return new ContextMenu(open, new SeparatorMenuItem(), notifyStatus, test, statusMenu, disabled,
                 new SeparatorMenuItem(), exit);
     }
 
     /**
-     * Builds the window: controls for every tray property plus the event log.
+     * Applies a status: new icon and tooltip, and a notification carrying the
+     * new icon when notifications are on.
+     *
+     * @param status the new status
+     */
+    private void setStatus(Status status) {
+        Image icon = drawIcon(status);
+        tray.setImage(icon);
+        tray.setTooltip("Juxtray Demo — " + status.label);
+        append("Status → " + status.label);
+        if (notifyStatus.isSelected()) {
+            TrayNotification notification = new TrayNotification("Status changed",
+                    "You are now " + status.label.toLowerCase() + ".");
+            notification.setImage(icon);
+            show(notification);
+        }
+    }
+
+    /**
+     * Builds the window: tabs with every tray and notification setting, plus
+     * the event log.
      *
      * @return the root node
      */
     private VBox buildControls() {
+        Tab trayTab = new Tab("Tray", buildTrayTab());
+        Tab notificationTab = new Tab("Notifications", buildNotificationTab());
+        TabPane tabs = new TabPane(trayTab, notificationTab);
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Button clear = new Button("Clear log");
+        clear.setOnAction(_ -> log.getItems().clear());
+        HBox logHeader = new HBox(8, new Label("Tray events"), clear);
+        logHeader.setAlignment(Pos.CENTER_LEFT);
+
+        VBox.setVgrow(log, Priority.ALWAYS);
+        VBox root = new VBox(10, tabs, logHeader, log);
+        root.setPadding(new Insets(10, 14, 14, 14));
+        return root;
+    }
+
+    /**
+     * The Tray tab: tooltip, visibility, menu behaviour, menu theme and app theme.
+     *
+     * @return the tab content
+     */
+    private Node buildTrayTab() {
         TextField tooltip = new TextField(tray.getTooltip());
         tooltip.textProperty().bindBidirectional(tray.tooltipProperty());
-        HBox tooltipRow = new HBox(8, new Label("Tooltip"), tooltip);
-        tooltipRow.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(tooltip, Priority.ALWAYS);
 
         CheckBox visible = new CheckBox("Icon visible");
         visible.selectedProperty().bindBidirectional(tray.visibleProperty());
@@ -208,26 +305,272 @@ public final class DemoApp extends Application {
         leftMenu.selectedProperty().bindBidirectional(tray.menuOnPrimaryClickProperty());
 
         // Menu theme: built-in (OS / light / dark), custom CSS themes, or plain Modena.
-        ComboBox<MenuTheme> theme = new ComboBox<>();
-        theme.getItems().addAll(MenuTheme.values());
-        theme.getSelectionModel().select(MenuTheme.SYSTEM);
-        theme.valueProperty().addListener((_, _, selected) -> selected.applyTo(tray));
-        HBox themeRow = new HBox(8, new Label("Menu theme"), theme);
-        themeRow.setAlignment(Pos.CENTER_LEFT);
+        ComboBox<MenuTheme> menuTheme = new ComboBox<>();
+        menuTheme.getItems().addAll(MenuTheme.values());
+        menuTheme.getSelectionModel().select(MenuTheme.SYSTEM);
+        menuTheme.valueProperty().addListener((_, _, selected) -> selected.applyTo(tray));
+
+        // App theme: restyles this window, and the tray follows (styleSource).
+        ComboBox<AppTheme> appTheme = new ComboBox<>();
+        appTheme.getItems().addAll(AppTheme.values());
+        appTheme.getSelectionModel().select(AppTheme.LIGHT);
+        appTheme.valueProperty().addListener((_, _, selected) -> selected.applyTo(stage.getScene()));
 
         Button showMenu = new Button("Show tray menu at cursor");
         showMenu.setOnAction(_ -> tray.showMenu());
 
-        Button clear = new Button("Clear log");
-        clear.setOnAction(_ -> log.getItems().clear());
+        GridPane grid = form();
+        grid.addRow(0, new Label("Tooltip"), tooltip);
+        grid.addRow(1, new Label("Tray theme"), menuTheme);
+        grid.addRow(2, new Label("App theme"), appTheme);
 
-        VBox.setVgrow(log, Priority.ALWAYS);
-        VBox root = new VBox(10,
-                new Label("Right-click the tray icon to open its menu; left-click toggles this window."),
-                tooltipRow, visible, leftMenu, themeRow, new HBox(8, showMenu, clear),
-                new Label("Tray events"), log);
-        root.setPadding(new Insets(14));
-        return root;
+        Label hint = new Label("Right-click the tray icon to open its menu; left-click toggles this window. "
+                + "The tray follows the app theme, live.");
+        hint.setWrapText(true);
+        VBox box = new VBox(10, hint, grid, visible, leftMenu, showMenu);
+        box.setPadding(new Insets(12, 2, 4, 2));
+        return box;
+    }
+
+    /**
+     * The Notifications tab: compose and show notifications, and tune
+     * animation, position and stacking.
+     *
+     * @return the tab content
+     */
+    private Node buildNotificationTab() {
+        TextField title = new TextField("Build finished");
+        TextField message = new TextField("All 128 tests passed in 42 seconds.");
+
+        ComboBox<NotificationType> type = new ComboBox<>();
+        type.getItems().addAll(NotificationType.values());
+        type.setValue(NotificationType.SUCCESS);
+
+        ComboBox<IconChoice> icon = new ComboBox<>();
+        icon.getItems().addAll(IconChoice.values());
+        icon.setValue(IconChoice.DEFAULT);
+
+        ComboBox<Duration> duration = new ComboBox<>();
+        duration.getItems().addAll(Duration.seconds(3), Duration.seconds(5), Duration.seconds(10),
+                Duration.INDEFINITE);
+        duration.setValue(TrayNotification.DEFAULT_DURATION);
+        duration.setConverter(converter(d -> d.isIndefinite() ? "Until closed" : (int) d.toSeconds() + " s"));
+
+        CheckBox actions = new CheckBox("Action buttons");
+        actions.setSelected(true);
+        CheckBox closable = new CheckBox("Close button");
+        closable.setSelected(true);
+
+        ComboBox<NotificationAnimation> animation = new ComboBox<>();
+        animation.getItems().addAll(NotificationAnimation.values());
+        animation.valueProperty().bindBidirectional(tray.notificationAnimationProperty());
+
+        // "Auto" maps to a null position: the corner next to the taskbar.
+        String auto = "Auto (next to the taskbar)";
+        ComboBox<String> position = new ComboBox<>();
+        position.getItems().add(auto);
+        for (Pos pos : new Pos[] {Pos.BOTTOM_RIGHT, Pos.BOTTOM_LEFT, Pos.TOP_RIGHT, Pos.TOP_LEFT,
+                Pos.BOTTOM_CENTER, Pos.TOP_CENTER}) {
+            position.getItems().add(pos.name());
+        }
+        position.setValue(auto);
+        position.valueProperty().addListener((_, _, choice) ->
+                tray.setNotificationPosition(auto.equals(choice) ? null : Pos.valueOf(choice)));
+
+        Spinner<Integer> max = new Spinner<>(1, 8, tray.getMaxNotifications());
+        tray.maxNotificationsProperty().bind(max.valueProperty());
+
+        // Sound: Juxtray's built-in per-type sounds (the default), the demo's own chime,
+        // silence, or any WAV/MP3 the user picks.
+        String builtIn = "Built-in (one per type)";
+        String chime = "Demo chime (custom WAV)";
+        String none = "None";
+        String pick = "Choose a WAV or MP3…";
+        ComboBox<String> sound = new ComboBox<>();
+        sound.getItems().addAll(builtIn, chime, none, pick);
+        sound.setValue(builtIn);
+        sound.valueProperty().addListener((_, previous, choice) -> {
+            if (builtIn.equals(choice)) {
+                tray.setNotificationSound(null);
+                tray.setUseDefaultSounds(true);
+            } else if (chime.equals(choice)) {
+                tray.setNotificationSound(resource("chime.wav"));
+            } else if (none.equals(choice)) {
+                tray.setNotificationSound(null);
+                tray.setUseDefaultSounds(false);
+            } else if (pick.equals(choice)) {
+                FileChooser chooser = new FileChooser();
+                chooser.setTitle("Notification sound");
+                chooser.getExtensionFilters().add(
+                        new FileChooser.ExtensionFilter("Sounds (WAV, MP3)", "*.wav", "*.mp3"));
+                File file = chooser.showOpenDialog(stage);
+                if (file == null) {
+                    // Cancelled: go back to the previous choice once this change has finished.
+                    Platform.runLater(() -> sound.setValue(previous));
+                    return;
+                }
+                tray.setNotificationSound(file.toURI().toString());
+                append("Notification sound → " + file.getName());
+                // Let the user hear it right away.
+                show(new TrayNotification("New sound", file.getName(), NotificationType.INFO));
+            }
+        });
+
+        Slider volume = new Slider(0, 1, tray.getNotificationVolume());
+        tray.notificationVolumeProperty().bind(volume.valueProperty());
+
+        Button show = new Button("Show notification");
+        show.setDefaultButton(true);
+        show.setOnAction(_ -> {
+            TrayNotification notification = new TrayNotification(title.getText(), message.getText(), type.getValue());
+            switch (icon.getValue()) {
+                case IMAGE -> notification.setImage(drawBell());
+                case NODE -> notification.setGraphic(new ProgressIndicator());
+                case DEFAULT -> {
+                    // Built-in icon for the type, or the tray icon for NONE.
+                }
+            }
+            notification.setDuration(duration.getValue());
+            notification.setClosable(closable.isSelected());
+            if (actions.isSelected()) {
+                Button later = new Button("Later");
+                later.setOnAction(_ -> append("Action: Later"));
+                Button open = new Button("Open");
+                open.setDefaultButton(true);
+                open.setOnAction(_ -> {
+                    append("Action: Open");
+                    showWindow();
+                });
+                notification.getActions().addAll(later, open);
+            }
+            show(notification);
+        });
+
+        Button allTypes = new Button("One of each type");
+        allTypes.setOnAction(_ -> {
+            show(new TrayNotification("Plain", "Uses the tray icon as its icon.", NotificationType.NONE));
+            show(new TrayNotification("Info", "A new version is available.", NotificationType.INFO));
+            show(new TrayNotification("Success", "Your files are backed up.", NotificationType.SUCCESS));
+            show(new TrayNotification("Warning", "The disk is almost full.", NotificationType.WARNING));
+            show(new TrayNotification("Error", "The server could not be reached.", NotificationType.ERROR));
+        });
+
+        Button progress = new Button("Live progress");
+        progress.setOnAction(_ -> showProgress());
+
+        Button hideAll = new Button("Hide all");
+        hideAll.setOnAction(_ -> tray.hideNotifications());
+
+        GridPane grid = form();
+        grid.addRow(0, new Label("Title"), title);
+        grid.addRow(1, new Label("Message"), message);
+        grid.addRow(2, new Label("Type"), type);
+        grid.addRow(3, new Label("Icon"), icon);
+        grid.addRow(4, new Label("Duration"), duration);
+        grid.addRow(5, new Label("Animation"), animation);
+        grid.addRow(6, new Label("Position"), position);
+        grid.addRow(7, new Label("Max open"), max);
+        grid.addRow(8, new Label("Sound"), sound);
+        grid.addRow(9, new Label("Volume"), volume);
+
+        VBox box = new VBox(10, grid, new HBox(16, actions, closable),
+                new HBox(8, show, allTypes, progress, hideAll));
+        box.setPadding(new Insets(12, 2, 4, 2));
+        return box;
+    }
+
+    /**
+     * Shows a notification whose content changes while it is open: a fake
+     * download that counts up, then turns into a success notification that
+     * closes on its own.
+     */
+    private void showProgress() {
+        TrayNotification notification = new TrayNotification("Downloading update", "Starting…",
+                NotificationType.INFO);
+        notification.setGraphic(new ProgressIndicator());
+        // Stay until done; switching to a finite duration later starts the countdown.
+        notification.setDuration(Duration.INDEFINITE);
+        show(notification);
+
+        int[] percent = {0};
+        Timeline ticker = new Timeline(new KeyFrame(Duration.millis(60), _ -> {
+            percent[0] += 2;
+            notification.setMessage("juxtray-update.zip — " + percent[0] + " %");
+        }));
+        ticker.setCycleCount(50);
+        ticker.setOnFinished(_ -> {
+            notification.setGraphic(null);
+            notification.setType(NotificationType.SUCCESS);
+            notification.setTitle("Update downloaded");
+            notification.setMessage("Restart the app to finish installing.");
+            notification.setDuration(Duration.seconds(5));
+        });
+        // Stop counting if the user closes it early.
+        notification.showingProperty().addListener((_, _, showing) -> {
+            if (!showing) {
+                ticker.stop();
+            }
+        });
+        ticker.play();
+    }
+
+    /**
+     * Shows a notification and logs its life cycle.
+     *
+     * @param notification the notification
+     */
+    private void show(TrayNotification notification) {
+        String name = "\"" + notification.getTitle() + "\"";
+        notification.setOnShown(_ -> append("Notification shown: " + name));
+        notification.setOnHidden(_ -> append("Notification hidden: " + name));
+        notification.setOnAction(_ -> {
+            append("Notification clicked: " + name);
+            showWindow();
+        });
+        tray.showNotification(notification);
+    }
+
+    /**
+     * Resolves a resource next to this class as a URL string.
+     *
+     * @param name resource name
+     * @return the URL
+     */
+    private static String resource(String name) {
+        return DemoApp.class.getResource(name).toExternalForm();
+    }
+
+    /**
+     * A two-column form grid.
+     *
+     * @return the grid
+     */
+    private static GridPane form() {
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(8);
+        return grid;
+    }
+
+    /**
+     * A display-only string converter for combo boxes.
+     *
+     * @param format turns a value into its label
+     * @param <T>    the value type
+     * @return the converter
+     */
+    private static <T> StringConverter<T> converter(Function<T, String> format) {
+        return new StringConverter<>() {
+            @Override
+            public String toString(T value) {
+                return format.apply(value);
+            }
+
+            @Override
+            public T fromString(String text) {
+                throw new UnsupportedOperationException("Display only");
+            }
+        };
     }
 
     /**
@@ -248,9 +591,47 @@ public final class DemoApp extends Application {
         g.setFont(Font.font("Segoe UI", FontWeight.BOLD, 180));
         g.setTextAlign(TextAlignment.CENTER);
         g.fillText("J", size / 2, size * 0.76);
+        return snapshot(canvas);
+    }
 
+    /**
+     * Draws a bell on a purple circle, for the "custom image" notification icon.
+     *
+     * @return the image, 256 px
+     */
+    private static Image drawBell() {
+        double size = 256;
+        Canvas canvas = new Canvas(size, size);
+        GraphicsContext g = canvas.getGraphicsContext2D();
+        g.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.web("#a855f7")), new Stop(1, Color.web("#6d28d9"))));
+        g.fillOval(0, 0, size, size);
+        g.setFill(Color.WHITE);
+        // Bell body: a dome on a flared base.
+        g.beginPath();
+        g.moveTo(128, 52);
+        g.bezierCurveTo(84, 52, 72, 92, 72, 128);
+        g.lineTo(72, 160);
+        g.lineTo(56, 180);
+        g.lineTo(200, 180);
+        g.lineTo(184, 160);
+        g.lineTo(184, 128);
+        g.bezierCurveTo(184, 92, 172, 52, 128, 52);
+        g.closePath();
+        g.fill();
+        // Clapper.
+        g.fillOval(110, 186, 36, 28);
+        return snapshot(canvas);
+    }
+
+    /**
+     * Snapshots a canvas with a transparent background.
+     *
+     * @param canvas the drawing
+     * @return the image
+     */
+    private static Image snapshot(Canvas canvas) {
         SnapshotParameters params = new SnapshotParameters();
-        // Transparent outside the rounded square.
         params.setFill(Color.TRANSPARENT);
         return canvas.snapshot(params, null);
     }

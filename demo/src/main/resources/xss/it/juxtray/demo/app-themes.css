@@ -1,0 +1,71 @@
+/*
+ * The demo window's own themes (see AppTheme). Each theme is a style class on
+ * the scene root.
+ *
+ * The tray follows this scene (TrayIcon.styleSource), so this file is also
+ * loaded for the tray menu and notifications, and the root classes are
+ * mirrored onto them. That is why ".root.app-dark .tray-notification" works:
+ * one stylesheet themes the app and its tray together.
+ */
+
+/* ---- Dark ---- */
+.root.app-dark {
+    -fx-base: #2b2b2b;
+    -fx-background: #1f1f1f;
+    -fx-control-inner-background: #262626;
+    -fx-accent: #7c9cff;
+    -fx-focus-color: #7c9cff;
+}
+
+.root.app-dark .context-menu,
+.root.app-dark .tray-notification {
+    -tray-background: #262626;
+    -tray-border: rgba(255, 255, 255, 0.10);
+    -tray-border-hover: rgba(124, 156, 255, 0.45);
+    -tray-text: #f2f2f2;
+    -tray-text-secondary: #a9a9a9;
+    -tray-hover: rgba(124, 156, 255, 0.16);
+    -tray-pressed: rgba(124, 156, 255, 0.10);
+    -tray-separator: rgba(255, 255, 255, 0.10);
+    -tray-mark: #7c9cff;
+    -tray-button: #333333;
+    -tray-button-hover: #3b3b3b;
+    -tray-track: rgba(255, 255, 255, 0.08);
+    -tray-shadow: rgba(0, 0, 0, 0.55);
+    -tray-accent: #7c9cff;
+    -tray-on-accent: #111111;
+    -tray-glyph: #111111;
+}
+
+/* ---- Ocean ---- */
+.root.app-ocean {
+    -fx-base: #10405c;
+    -fx-background: #0b2a3f;
+    -fx-control-inner-background: #0e3550;
+    -fx-accent: #08b2e3;
+    -fx-focus-color: #08b2e3;
+}
+
+.root.app-ocean .context-menu,
+.root.app-ocean .tray-notification {
+    -tray-background: #0b2a3f;
+    -tray-border: rgba(8, 178, 227, 0.35);
+    -tray-border-hover: rgba(8, 178, 227, 0.70);
+    -tray-text: #e0f4ff;
+    -tray-text-secondary: #8fc1d9;
+    -tray-hover: rgba(8, 178, 227, 0.18);
+    -tray-pressed: rgba(8, 178, 227, 0.10);
+    -tray-separator: rgba(8, 178, 227, 0.25);
+    -tray-mark: #08b2e3;
+    -tray-button: #0e3550;
+    -tray-button-hover: #134563;
+    -tray-track: rgba(8, 178, 227, 0.15);
+    -tray-shadow: rgba(0, 20, 40, 0.60);
+    -tray-accent: #08b2e3;
+    -tray-on-accent: #04202f;
+    -tray-info: #08b2e3;
+    -tray-success: #3ddc97;
+    -tray-warning: #ffcf56;
+    -tray-error: #ff6b6b;
+    -tray-glyph: #04202f;
+}

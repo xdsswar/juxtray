@@ -81,7 +81,7 @@ enum MenuTheme {
             urls.add(resource(sheet));
         }
         tray.setUseDefaultTheme(builtIn);
-        tray.setMenuColorScheme(scheme);
+        tray.setColorScheme(scheme);
         tray.getStylesheets().setAll(urls);
     }
 

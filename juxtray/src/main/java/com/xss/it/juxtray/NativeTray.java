@@ -65,6 +65,19 @@ public interface NativeTray extends AutoCloseable {
     void activateWindow(String title);
 
     /**
+     * Runs an action that shows a window, without letting that window take
+     * the keyboard focus from the application the user is working in.
+     *
+     * <p>JavaFX activates every stage it shows. That is right for menus, but
+     * a notification popping up must not steal the focus from whatever the
+     * user is typing into. Back ends that cannot prevent it simply run the
+     * action.</p>
+     *
+     * @param showAction shows the window; run on the calling thread
+     */
+    void runWithoutActivation(Runnable showAction);
+
+    /**
      * Removes the icon from the tray and frees all native resources.
      * Calling it again has no effect.
      */

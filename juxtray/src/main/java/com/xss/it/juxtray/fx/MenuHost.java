@@ -2,14 +2,10 @@ package com.xss.it.juxtray.fx;
 
 import com.xss.it.juxtray.MenuPlacement;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import javafx.application.ColorScheme;
-import javafx.application.Platform;
-import javafx.beans.InvalidationListener;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableBooleanValue;
 import javafx.beans.value.ObservableValue;
@@ -47,7 +43,9 @@ import javafx.stage.StageStyle;
  * JavaFX CSS ({@code .context-menu}, {@code .menu-item}, {@code .menu},
  * {@code .check-menu-item}, {@code .radio-menu-item},
  * {@code .separator-menu-item}...). Because these stylesheets live only on
- * the host scene, they never leak into the application's own windows.</p>
+ * the host scene, they never leak into the application's own windows. A
+ * {@link StyleLink} keeps them, and the open menus, in sync with the theme
+ * and the optional application style source.</p>
  *
  * <p><strong>Closing:</strong> the host stage is activated (made the
  * foreground window) when the menu opens. Clicking anywhere else deactivates
@@ -84,17 +82,8 @@ public final class MenuHost {
     /** Brings a window to the foreground, by title (native helper). */
     private final Consumer<String> activator;
 
-    /** User stylesheets, applied after the default theme. */
-    private final ObservableList<String> userStylesheets;
-
-    /** Whether the built-in theme is applied. */
-    private final ObservableBooleanValue useDefaultTheme;
-
-    /** Forced light/dark variant of the built-in theme, or {@code null} to follow the OS. */
-    private final ObservableValue<ColorScheme> colorScheme;
-
-    /** Rebuilds the scene stylesheets when any input changes. */
-    private final InvalidationListener stylesheetUpdater = _ -> updateStylesheets();
+    /** Keeps the host scene and the open menus styled. */
+    private final StyleLink styleLink;
 
     /** Hides the host stage when the menu closes. */
     private final ChangeListener<Boolean> menuShowingListener = (_, _, showing) -> {
@@ -119,13 +108,13 @@ public final class MenuHost {
      * @param useDefaultTheme whether to apply the built-in theme; watched for changes
      * @param colorScheme     forced light/dark variant of the built-in theme, or a {@code null}
      *                        value to follow the OS; watched for changes
+     * @param styleSource     application scene whose styles the menu follows, or a {@code null}
+     *                        value for none; watched for changes
      * @param activator       native helper that brings a window (by title) to the foreground
      */
     public MenuHost(ObservableList<String> userStylesheets, ObservableBooleanValue useDefaultTheme,
-                    ObservableValue<ColorScheme> colorScheme, Consumer<String> activator) {
-        this.userStylesheets = Objects.requireNonNull(userStylesheets, "userStylesheets");
-        this.useDefaultTheme = Objects.requireNonNull(useDefaultTheme, "useDefaultTheme");
-        this.colorScheme = Objects.requireNonNull(colorScheme, "colorScheme");
+                    ObservableValue<ColorScheme> colorScheme, ObservableValue<Scene> styleSource,
+                    Consumer<String> activator) {
         this.activator = Objects.requireNonNull(activator, "activator");
 
         Region root = new Region();
@@ -148,11 +137,8 @@ public final class MenuHost {
             }
         });
 
-        userStylesheets.addListener(stylesheetUpdater);
-        useDefaultTheme.addListener(stylesheetUpdater);
-        colorScheme.addListener(stylesheetUpdater);
-        Platform.getPreferences().colorSchemeProperty().addListener(stylesheetUpdater);
-        updateStylesheets();
+        styleLink = new StyleLink(stage, LIGHT_THEME, DARK_THEME, userStylesheets, useDefaultTheme,
+                colorScheme, styleSource);
     }
 
     /**
@@ -264,10 +250,7 @@ public final class MenuHost {
      */
     public void dispose() {
         hide();
-        userStylesheets.removeListener(stylesheetUpdater);
-        useDefaultTheme.removeListener(stylesheetUpdater);
-        colorScheme.removeListener(stylesheetUpdater);
-        Platform.getPreferences().colorSchemeProperty().removeListener(stylesheetUpdater);
+        styleLink.dispose();
         stage.close();
     }
 
@@ -284,28 +267,5 @@ public final class MenuHost {
             current = null;
         }
         stage.hide();
-    }
-
-    /**
-     * Recomputes the host scene's stylesheets: the default theme (if enabled)
-     * in the forced colour scheme, or the OS one when none is forced, then the
-     * user's.
-     *
-     * <p>Popups copy these stylesheets when they open, so a change takes effect
-     * the next time the menu is shown.</p>
-     */
-    private void updateStylesheets() {
-        List<String> sheets = new ArrayList<>();
-        if (useDefaultTheme.get()) {
-            ColorScheme scheme = colorScheme.getValue() != null
-                    ? colorScheme.getValue()
-                    : Platform.getPreferences().getColorScheme();
-            URL theme = scheme == ColorScheme.DARK ? DARK_THEME : LIGHT_THEME;
-            if (theme != null) {
-                sheets.add(theme.toExternalForm());
-            }
-        }
-        sheets.addAll(userStylesheets);
-        stage.getScene().getStylesheets().setAll(sheets);
     }
 }

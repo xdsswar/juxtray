@@ -9,14 +9,20 @@ import com.xss.it.juxtray.PhysicalRect;
 import com.xss.it.juxtray.PixelScaler;
 import com.xss.it.juxtray.fx.FxImages;
 import com.xss.it.juxtray.fx.MenuHost;
+import com.xss.it.juxtray.fx.NotificationHost;
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
+import java.util.Objects;
 import java.util.function.Consumer;
 import javafx.application.ColorScheme;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -26,7 +32,9 @@ import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Point2D;
+import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.Scene;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.image.Image;
 import javafx.scene.input.MouseButton;
@@ -58,13 +66,37 @@ import javafx.stage.Screen;
  * {@code :disabled}, effects, gradients, and inline {@code setStyle}. The root
  * menu also gets the style class {@code tray-menu}.</p>
  * <p>A built-in Windows 11-like theme is applied first. It follows the OS
- * light/dark setting (or a forced one, see {@link #setMenuColorScheme}) and exposes its palette as looked-up colours
+ * light/dark setting (or a forced one, see {@link #setColorScheme}) and exposes its palette as looked-up colours
  * ({@code -tray-background}, {@code -tray-text}, {@code -tray-hover} ...),
  * so a stylesheet added through {@link #getStylesheets()} can retheme it
  * with a couple of lines or replace it entirely. Turn it off with
  * {@link #setUseDefaultTheme(boolean)}. The application's own scene
  * stylesheets do <em>not</em> apply to tray menus, and tray stylesheets do
  * not leak into the application.</p>
+ *
+ * <h2>Notifications</h2>
+ * <p>{@link #showNotification(TrayNotification)} pops up a notification next
+ * to the tray. Notifications are JavaFX nodes too: animated (see
+ * {@link #setNotificationAnimation}), stacked, with icons, action buttons and
+ * a countdown that pauses on hover, and styled with the same CSS as the
+ * menu ({@code .tray-notification} and friends, documented on
+ * {@link TrayNotification}). They have their own built-in light/dark theme,
+ * which follows the same settings as the menu theme.</p>
+ * <pre>{@code
+ * tray.showNotification("Upload complete", "report.pdf is online.", NotificationType.SUCCESS);
+ * }</pre>
+ *
+ * <h2>Following the application's theme</h2>
+ * <p>Set a {@link #setStyleSource style source} and the menu and notifications
+ * follow an application scene, live: its stylesheets, its user-agent
+ * stylesheet, and its root's style classes, inline style and pseudo-classes.
+ * When the application switches theme (swaps a stylesheet, toggles a
+ * {@code dark} class on its root, ...), the tray restyles with it. A global
+ * {@code Application.setUserAgentStylesheet} theme reaches the tray without
+ * any of this.</p>
+ * <pre>{@code
+ * tray.styleSourceProperty().bind(stage.sceneProperty());
+ * }</pre>
  *
  * <h2>Threading and lifecycle</h2>
  * <p>Create, use and close tray icons on the JavaFX Application Thread only,
@@ -93,6 +125,9 @@ public final class TrayIcon implements AutoCloseable {
 
     /** Owner and positioning logic for the context menu. */
     private final MenuHost menuHost;
+
+    /** Owner, layout and animations of the notifications. */
+    private final NotificationHost notificationHost;
 
     /** User stylesheets for the menu. */
     private final ObservableList<String> stylesheets = FXCollections.observableArrayList();
@@ -132,8 +167,30 @@ public final class TrayIcon implements AutoCloseable {
     // Whether the built-in menu theme is applied under the user stylesheets.
     private final BooleanProperty useDefaultTheme = new SimpleBooleanProperty(this, "useDefaultTheme", true);
 
-    // Forces the light or dark built-in theme; null follows the OS colour scheme.
-    private final ObjectProperty<ColorScheme> menuColorScheme = new SimpleObjectProperty<>(this, "menuColorScheme");
+    // Forces the light or dark built-in theme (menu and notifications); null follows the OS colour scheme.
+    private final ObjectProperty<ColorScheme> colorScheme = new SimpleObjectProperty<>(this, "colorScheme");
+
+    // Application scene whose styles the menu and notifications follow; null for none.
+    private final ObjectProperty<Scene> styleSource = new SimpleObjectProperty<>(this, "styleSource");
+
+    // Where notifications stack; null picks the screen corner next to the taskbar.
+    private final ObjectProperty<Pos> notificationPosition = new SimpleObjectProperty<>(this, "notificationPosition");
+
+    // How notifications appear and disappear.
+    private final ObjectProperty<NotificationAnimation> notificationAnimation =
+            new SimpleObjectProperty<>(this, "notificationAnimation", NotificationAnimation.SLIDE);
+
+    // How many notifications may be open at once; the oldest closes when one more opens.
+    private final IntegerProperty maxNotifications = new SimpleIntegerProperty(this, "maxNotifications", 4);
+
+    // URL of a WAV/MP3 played for notifications without their own sound; null for silence.
+    private final StringProperty notificationSound = new SimpleStringProperty(this, "notificationSound");
+
+    // Volume of notification sounds, 0 to 1.
+    private final DoubleProperty notificationVolume = new SimpleDoubleProperty(this, "notificationVolume", 1.0);
+
+    // Whether notifications with no sound set anywhere play the built-in sound of their type.
+    private final BooleanProperty useDefaultSounds = new SimpleBooleanProperty(this, "useDefaultSounds", true);
 
     // Called when the icon is clicked with the primary (left) button.
     private final ObjectProperty<EventHandler<ActionEvent>> onAction = new SimpleObjectProperty<>(this, "onAction");
@@ -152,7 +209,10 @@ public final class TrayIcon implements AutoCloseable {
         checkFxThread();
         // The native listener runs on the Win32 thread; hop to JavaFX before touching anything.
         peer = NativeTrays.create(event -> Platform.runLater(() -> dispatch(event)));
-        menuHost = new MenuHost(stylesheets, useDefaultTheme, menuColorScheme, peer::activateWindow);
+        menuHost = new MenuHost(stylesheets, useDefaultTheme, colorScheme, styleSource, peer::activateWindow);
+        notificationHost = new NotificationHost(stylesheets, useDefaultTheme, colorScheme, styleSource,
+                notificationPosition, notificationAnimation, maxNotifications, this::getImage,
+                peer::runWithoutActivation, notificationSound, notificationVolume, useDefaultSounds);
 
         image.addListener((_, oldImage, _) -> {
             if (oldImage != null) {
@@ -401,32 +461,33 @@ public final class TrayIcon implements AutoCloseable {
     }
 
     /**
-     * Which variant of the built-in menu theme to use: {@link ColorScheme#LIGHT},
-     * {@link ColorScheme#DARK}, or {@code null} (the default) to follow the OS
-     * setting live. Has no effect while {@link #isUseDefaultTheme()} is off.
+     * Which variant of the built-in themes (menu and notifications) to use:
+     * {@link ColorScheme#LIGHT}, {@link ColorScheme#DARK}, or {@code null}
+     * (the default) to follow the OS setting live. Has no effect while
+     * {@link #isUseDefaultTheme()} is off.
      *
      * @return the property
      */
-    public ObjectProperty<ColorScheme> menuColorSchemeProperty() {
-        return menuColorScheme;
+    public ObjectProperty<ColorScheme> colorSchemeProperty() {
+        return colorScheme;
     }
 
     /**
-     * Gets the forced colour scheme of the built-in menu theme.
+     * Gets the forced colour scheme of the built-in themes (menu and notifications).
      *
      * @return the forced scheme, or {@code null} when following the OS
      */
-    public ColorScheme getMenuColorScheme() {
-        return menuColorScheme.get();
+    public ColorScheme getColorScheme() {
+        return colorScheme.get();
     }
 
     /**
-     * Forces the light or dark built-in menu theme.
+     * Forces the light or dark built-in themes (menu and notifications).
      *
      * @param value the scheme to use, or {@code null} to follow the OS
      */
-    public void setMenuColorScheme(ColorScheme value) {
-        menuColorScheme.set(value);
+    public void setColorScheme(ColorScheme value) {
+        colorScheme.set(value);
     }
 
     /**
@@ -486,9 +547,235 @@ public final class TrayIcon implements AutoCloseable {
     }
 
     /**
-     * Stylesheet URLs applied to the menu, on top of the built-in theme. They
-     * work exactly like {@code Scene.getStylesheets()}. Changes take effect
-     * the next time the menu opens.
+     * The application scene whose styles the menu and notifications follow.
+     *
+     * <p>Its stylesheets are applied after the built-in theme and before
+     * {@link #getStylesheets()}. Its user-agent stylesheet is used too, and its
+     * root's style classes, inline style and pseudo-classes are copied onto
+     * the root of every menu, submenu and notification, so rules such as
+     * {@code .root.dark .context-menu} or {@code .root:dark .tray-notification}
+     * match. Everything is tracked live, including open menus and
+     * notifications. To follow whatever scene a stage shows:</p>
+     * <pre>{@code
+     * tray.styleSourceProperty().bind(stage.sceneProperty());
+     * }</pre>
+     * <p>Application stylesheets usually target the application's own nodes,
+     * so they only change the tray where they mention its selectors, or where
+     * they redefine the {@code -tray-*} colours. Combine with
+     * {@link #setUseDefaultTheme(boolean) setUseDefaultTheme(false)} to let the
+     * application's theme decide everything.</p>
+     *
+     * @return the property
+     */
+    public ObjectProperty<Scene> styleSourceProperty() {
+        return styleSource;
+    }
+
+    /**
+     * Gets the application scene whose styles the tray follows.
+     *
+     * @return the scene, or {@code null}
+     */
+    public Scene getStyleSource() {
+        return styleSource.get();
+    }
+
+    /**
+     * Sets the application scene whose styles the tray follows.
+     *
+     * @param value the scene, or {@code null} for none
+     */
+    public void setStyleSource(Scene value) {
+        styleSource.set(value);
+    }
+
+    /**
+     * Where notifications appear. Corners and edge centres are supported:
+     * the vertical part picks the top or bottom edge, the horizontal part
+     * the left side, centre or right side. {@code null} (the default) picks
+     * the corner next to the taskbar, where the tray is.
+     *
+     * @return the property
+     */
+    public ObjectProperty<Pos> notificationPositionProperty() {
+        return notificationPosition;
+    }
+
+    /**
+     * Gets where notifications appear.
+     *
+     * @return the position, or {@code null} for automatic
+     */
+    public Pos getNotificationPosition() {
+        return notificationPosition.get();
+    }
+
+    /**
+     * Sets where notifications appear. Open notifications glide to the new place.
+     *
+     * @param value the position, or {@code null} for automatic
+     */
+    public void setNotificationPosition(Pos value) {
+        notificationPosition.set(value);
+    }
+
+    /**
+     * How notifications appear and disappear. Default
+     * {@link NotificationAnimation#SLIDE}; {@code null} means the same.
+     *
+     * @return the property
+     */
+    public ObjectProperty<NotificationAnimation> notificationAnimationProperty() {
+        return notificationAnimation;
+    }
+
+    /**
+     * Gets how notifications appear and disappear.
+     *
+     * @return the animation, or {@code null}
+     */
+    public NotificationAnimation getNotificationAnimation() {
+        return notificationAnimation.get();
+    }
+
+    /**
+     * Sets how notifications appear and disappear.
+     *
+     * @param value the animation
+     */
+    public void setNotificationAnimation(NotificationAnimation value) {
+        notificationAnimation.set(value);
+    }
+
+    /**
+     * How many notifications may be open at once. When one more opens, the
+     * oldest closes. Default 4; values below 1 count as 1.
+     *
+     * @return the property
+     */
+    public IntegerProperty maxNotificationsProperty() {
+        return maxNotifications;
+    }
+
+    /**
+     * Gets how many notifications may be open at once.
+     *
+     * @return the limit
+     */
+    public int getMaxNotifications() {
+        return maxNotifications.get();
+    }
+
+    /**
+     * Sets how many notifications may be open at once.
+     *
+     * @param value the limit
+     */
+    public void setMaxNotifications(int value) {
+        maxNotifications.set(value);
+    }
+
+    /**
+     * The sound played for every notification that does not set its own
+     * ({@link TrayNotification#setSound}) and is not
+     * {@link TrayNotification#setSilent silent}: the URL of a WAV or MP3 file
+     * (any format JavaFX Media plays). {@code null} (the default) falls back
+     * to the built-in sound of each notification's type, see
+     * {@link #setUseDefaultSounds(boolean)}.
+     * <pre>{@code
+     * tray.setNotificationSound(getClass().getResource("chime.wav").toExternalForm());
+     * }</pre>
+     *
+     * @return the property
+     */
+    public StringProperty notificationSoundProperty() {
+        return notificationSound;
+    }
+
+    /**
+     * Gets the default notification sound.
+     *
+     * @return the URL, or {@code null} for none
+     */
+    public String getNotificationSound() {
+        return notificationSound.get();
+    }
+
+    /**
+     * Sets the default notification sound.
+     *
+     * @param value the URL, or {@code null} for none
+     */
+    public void setNotificationSound(String value) {
+        notificationSound.set(value);
+    }
+
+    /**
+     * Whether notifications play Juxtray's built-in sounds when no sound is
+     * set anywhere (neither on the notification nor through
+     * {@link #setNotificationSound}). Each {@link NotificationType} has its
+     * own short chime: a soft rising one for {@code NONE}, a clear bell for
+     * {@code INFO}, an ascending arpeggio for {@code SUCCESS}, a double tone
+     * for {@code WARNING} and a falling tone for {@code ERROR}. Default
+     * {@code true}; turn it off for silent notifications unless a sound is set.
+     *
+     * @return the property
+     */
+    public BooleanProperty useDefaultSoundsProperty() {
+        return useDefaultSounds;
+    }
+
+    /**
+     * Tells whether the built-in sounds are used.
+     *
+     * @return {@code true} if they are
+     */
+    public boolean isUseDefaultSounds() {
+        return useDefaultSounds.get();
+    }
+
+    /**
+     * Turns the built-in notification sounds on or off.
+     *
+     * @param value {@code true} to play them when no other sound is set
+     */
+    public void setUseDefaultSounds(boolean value) {
+        useDefaultSounds.set(value);
+    }
+
+    /**
+     * Volume of notification sounds, from 0 (muted) to 1 (full, the default).
+     * Values outside that range are clamped.
+     *
+     * @return the property
+     */
+    public DoubleProperty notificationVolumeProperty() {
+        return notificationVolume;
+    }
+
+    /**
+     * Gets the notification sound volume.
+     *
+     * @return the volume, 0 to 1
+     */
+    public double getNotificationVolume() {
+        return notificationVolume.get();
+    }
+
+    /**
+     * Sets the notification sound volume.
+     *
+     * @param value the volume, 0 to 1
+     */
+    public void setNotificationVolume(double value) {
+        notificationVolume.set(value);
+    }
+
+    /**
+     * Stylesheet URLs applied to the menu and the notifications, on top of the
+     * built-in themes and the {@link #setStyleSource style source}. They work
+     * exactly like {@code Scene.getStylesheets()}, and changes apply at once,
+     * even to an open menu or notification.
      *
      * @return the live, modifiable list of stylesheet URLs
      */
@@ -520,6 +807,79 @@ public final class TrayIcon implements AutoCloseable {
     }
 
     /**
+     * Shows a notification next to the tray. If it is already showing here,
+     * its countdown restarts; if another tray icon shows it, it moves here.
+     * Does nothing once this icon is closed.
+     *
+     * @param notification the notification
+     * @throws IllegalStateException if not on the JavaFX Application Thread
+     */
+    public void showNotification(TrayNotification notification) {
+        checkFxThread();
+        Objects.requireNonNull(notification, "notification");
+        if (closed) {
+            return;
+        }
+        TrayIcon current = notification.owner();
+        if (current != null && current != this) {
+            // Closed at once, so its onHidden runs before it is shown here.
+            current.notificationHost.hide(notification, false);
+        }
+        if (notificationHost.show(notification, notification::markHidden)) {
+            notification.markShown(this);
+        }
+    }
+
+    /**
+     * Shows a plain notification with the tray icon's image.
+     *
+     * @param title   the title, or {@code null}
+     * @param message the message, or {@code null}
+     * @return the notification, for example to {@link TrayNotification#hide() hide} it later
+     * @throws IllegalStateException if not on the JavaFX Application Thread
+     */
+    public TrayNotification showNotification(String title, String message) {
+        return showNotification(title, message, NotificationType.NONE);
+    }
+
+    /**
+     * Shows a notification of a given type.
+     *
+     * @param title   the title, or {@code null}
+     * @param message the message, or {@code null}
+     * @param type    the kind of notification (icon and CSS pseudo-class)
+     * @return the notification, for example to {@link TrayNotification#hide() hide} it later
+     * @throws IllegalStateException if not on the JavaFX Application Thread
+     */
+    public TrayNotification showNotification(String title, String message, NotificationType type) {
+        TrayNotification notification = new TrayNotification(title, message, type);
+        showNotification(notification);
+        return notification;
+    }
+
+    /**
+     * Closes every open notification of this icon, with their exit animations.
+     *
+     * @throws IllegalStateException if not on the JavaFX Application Thread
+     */
+    public void hideNotifications() {
+        checkFxThread();
+        notificationHost.hideAll(true);
+    }
+
+    /**
+     * Closes one notification with its exit animation. Called by
+     * {@link TrayNotification#hide()}.
+     *
+     * @param notification the notification
+     * @throws IllegalStateException if not on the JavaFX Application Thread
+     */
+    void hideNotification(TrayNotification notification) {
+        checkFxThread();
+        notificationHost.hide(notification, true);
+    }
+
+    /**
      * Removes the icon from the tray and releases its native resources. The
      * icon cannot be used afterwards. Calling this again has no effect.
      *
@@ -537,6 +897,7 @@ public final class TrayIcon implements AutoCloseable {
             current.progressProperty().removeListener(imageProgressListener);
         }
         menuHost.dispose();
+        notificationHost.dispose();
         peer.close();
     }
 

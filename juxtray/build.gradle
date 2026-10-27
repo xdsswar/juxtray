@@ -19,6 +19,8 @@ dependencies {
     api "org.openjfx:javafx-base:${fx}:${fxPlatform}"
     api "org.openjfx:javafx-graphics:${fx}:${fxPlatform}"
     api "org.openjfx:javafx-controls:${fx}:${fxPlatform}"
+    // Notification sounds (WAV/MP3) are played with JavaFX's AudioClip.
+    api "org.openjfx:javafx-media:${fx}:${fxPlatform}"
 
     testImplementation platform('org.junit:junit-bom:5.13.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
